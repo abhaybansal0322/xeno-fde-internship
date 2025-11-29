@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: xeno-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-xenouser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-xenopass}
+      POSTGRES_DB: ${POSTGRES_DB:-xenodb}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xenouser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - xeno-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: xeno-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-3000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-xenouser}:${POSTGRES_PASSWORD:-xenopass}@postgres:5432/${POSTGRES_DB:-xenodb}?schema=public
+      ENABLE_CRON: ${ENABLE_CRON:-false}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: sh -c "npx prisma migrate deploy && npm start"
+    networks:
+      - xeno-network
+
+networks:
+  xeno-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

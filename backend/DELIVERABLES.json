@@ -1,0 +1,51 @@
+{
+    "branch": "backend/mvp",
+    "filesAdded": [
+        "backend/package.json",
+        "backend/.env.example",
+        "backend/.gitignore",
+        "backend/prisma/schema.prisma",
+        "backend/src/index.js",
+        "backend/src/prisma.js",
+        "backend/src/lib/shopifyClient.js",
+        "backend/src/lib/syncService.js",
+        "backend/src/lib/verifyWebhook.js",
+        "backend/src/routes/tenants.js",
+        "backend/src/routes/ingest.js",
+        "backend/src/routes/webhooks.js",
+        "backend/src/routes/metrics.js",
+        "backend/jest.config.js",
+        "backend/__tests__/prisma.test.js",
+        "backend/__tests__/syncService.test.js",
+        "backend/README.md"
+    ],
+    "prismaSchema": "// Prisma schema for Shopify multi-tenant data ingestion\n\ngenerator client {\n  provider = \"prisma-client-js\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\n// Tenant model - represents a Shopify store\nmodel Tenant {\n  id            String    @id @default(uuid())\n  name          String\n  shopifyDomain String    @unique\n  accessToken   String    // Store securely - encrypt in production\n  createdAt     DateTime  @default(now())\n  updatedAt     DateTime  @updatedAt\n  \n  // Relations\n  customers     Customer[]\n  products      Product[]\n  orders        Order[]\n  \n  @@map(\"tenants\")\n}\n\n// Customer model - Shopify customers\nmodel Customer {\n  id         String   @id @default(uuid())\n  tenantId   String\n  shopifyId  String   // Shopify customer ID (as string)\n  email      String?\n  firstName  String?\n  lastName   String?\n  totalSpent Decimal  @default(0) @db.Decimal(10, 2)\n  createdAt  DateTime @default(now())\n  updatedAt  DateTime @updatedAt\n  \n  // Relations\n  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)\n  orders     Order[]\n  \n  // Ensure unique customer per tenant\n  @@unique([tenantId, shopifyId])\n  @@index([tenantId])\n  @@map(\"customers\")\n}\n\n// Product model - Shopify products\nmodel Product {\n  id          String   @id @default(uuid())\n  tenantId    String\n  shopifyId   String   // Shopify product ID (as string)\n  title       String\n  vendor      String?\n  productType String?\n  price       Decimal  @default(0) @db.Decimal(10, 2)\n  createdAt   DateTime @default(now())\n  updatedAt   DateTime @updatedAt\n  \n  // Relations\n  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)\n  \n  // Ensure unique product per tenant\n  @@unique([tenantId, shopifyId])\n  @@index([tenantId])\n  @@map(\"products\")\n}\n\n// Order model - Shopify orders\nmodel Order {\n  id          String    @id @default(uuid())\n  tenantId    String\n  shopifyId   String    // Shopify order ID (as string)\n  customerId  String?   // Nullable - guest checkouts possible\n  orderNumber String?\n  totalPrice  Decimal   @default(0) @db.Decimal(10, 2)\n  orderDate   DateTime  // When order was created in Shopify\n  createdAt   DateTime  @default(now())\n  updatedAt   DateTime  @updatedAt\n  \n  // Relations\n  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)\n  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)\n  \n  // Ensure unique order per tenant\n  @@unique([tenantId, shopifyId])\n  @@index([tenantId])\n  @@index([orderDate])\n  @@map(\"orders\")\n}",
+    "sampleCurls": [
+        "# 1. Tenant Onboarding\ncurl -X POST http://localhost:3001/api/tenants/onboard \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"name\": \"My Shopify Store\",\n    \"shopifyDomain\": \"mystore.myshopify.com\",\n    \"accessToken\": \"shpat_xxxxxxxxxxxxxxxxxxxxx\"\n  }'",
+        "# 2. Manual Sync\ncurl -X POST \"http://localhost:3001/api/ingest/sync?tenantId=<TENANT_ID>\"",
+        "# 3. Get Metrics (All-time)\ncurl \"http://localhost:3001/api/metrics?tenantId=<TENANT_ID>\"",
+        "# 4. Get Metrics (Date Filtered)\ncurl \"http://localhost:3001/api/metrics?tenantId=<TENANT_ID>&start=2024-01-01&end=2024-01-31\"",
+        "# 5. Health Check\ncurl http://localhost:3001/health"
+    ],
+    "testCommands": [
+        "npm test",
+        "npm run test:watch"
+    ],
+    "acceptance": [
+        "1. Install dependencies: cd backend && npm install",
+        "2. Create .env file from .env.example and configure DATABASE_URL",
+        "3. Run migrations: npm run migrate (or npx prisma migrate dev --name init)",
+        "4. Start server: npm run dev",
+        "5. Verify server starts on port 3001 with 'Database connected' message",
+        "6. Test tenant onboarding with curl command from sampleCurls[0]",
+        "7. Save the returned tenantId",
+        "8. Test manual sync with tenantId: curl -X POST 'http://localhost:3001/api/ingest/sync?tenantId=<ID>'",
+        "9. Verify sync returns customersUpserted, productsUpserted, ordersUpserted counts",
+        "10. Test metrics endpoint: curl 'http://localhost:3001/api/metrics?tenantId=<ID>'",
+        "11. Verify metrics returns customersCount, ordersCount, totalRevenue, ordersByDate, topCustomers",
+        "12. Run unit tests: npm test",
+        "13. Verify 2 test suites pass (prisma.test.js and syncService.test.js)",
+        "14. Re-run sync (step 8) and verify idempotency - counts should match, no duplicates in DB",
+        "15. Check database using: npx prisma studio (optional visual verification)"
+    ]
+}
