@@ -5,6 +5,7 @@ This is the frontend prototype for the Xeno FDE Shopify data ingestion dashboard
 ## Features
 
 - **Authentication**: GitHub OAuth via NextAuth.js
+- **Tenant Selection**: Dropdown to switch between multiple Shopify stores
 - **Dashboard**:
   - Key metrics (Customers, Orders, Revenue)
   - Interactive Orders Chart (Recharts) with date range filter
