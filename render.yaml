@@ -3,7 +3,7 @@ services:
   - type: web
     name: xeno-backend
     env: node
-    root: backend
+    path: backend
     buildCommand: npm install && npx prisma generate
     startCommand: npm start
     envVars:
@@ -24,7 +24,7 @@ services:
   - type: web
     name: xeno-frontend
     env: node
-    root: frontend
+    path: frontend
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
