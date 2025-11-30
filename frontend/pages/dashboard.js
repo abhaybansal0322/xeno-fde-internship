@@ -7,15 +7,14 @@ import MetricCard from '../components/MetricCard';
 import OrdersChart from '../components/OrdersChart';
 import TopCustomers from '../components/TopCustomers';
 import { getMetrics } from '../lib/api';
+import { useTenant } from '../contexts/TenantContext';
 
 export default function Dashboard() {
     const { data: session, status } = useSession();
     const router = useRouter();
+    const { tenantId } = useTenant();
     const [metrics, setMetrics] = useState(null);
     const [loading, setLoading] = useState(true);
-
-    // Hardcoded tenant ID for MVP - in real app this would come from user context or selection
-    const TENANT_ID = 'default-tenant-id';
 
     useEffect(() => {
         if (status === 'unauthenticated') {
@@ -24,10 +23,11 @@ export default function Dashboard() {
     }, [status, router]);
 
     useEffect(() => {
-        if (status === 'authenticated') {
+        if (status === 'authenticated' && tenantId) {
+            setLoading(true);
             const fetchMetrics = async () => {
                 try {
-                    const data = await getMetrics(TENANT_ID);
+                    const data = await getMetrics(tenantId);
                     setMetrics(data);
                 } catch (error) {
                     console.error('Error fetching metrics:', error);
@@ -38,7 +38,7 @@ export default function Dashboard() {
 
             fetchMetrics();
         }
-    }, [status]);
+    }, [status, tenantId]);
 
     if (status === 'loading' || status === 'unauthenticated') {
         return (
@@ -92,10 +92,17 @@ export default function Dashboard() {
                     </div>
 
                     {/* Charts and Tables */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <OrdersChart tenantId={TENANT_ID} />
-                        <TopCustomers tenantId={TENANT_ID} />
-                    </div>
+                    {tenantId && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <OrdersChart tenantId={tenantId} />
+                            <TopCustomers tenantId={tenantId} />
+                        </div>
+                    )}
+                    {!tenantId && (
+                        <div className="text-center py-12">
+                            <p className="text-gray-500">Please select a tenant to view dashboard data.</p>
+                        </div>
+                    )}
                 </div>
             </main>
         </div>

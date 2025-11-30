@@ -10,7 +10,7 @@ const webhooksRouter = require('./routes/webhooks');
 const metricsRouter = require('./routes/metrics');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 4000;
 
 // Middleware for parsing JSON (except for webhooks which need raw body)
 app.use((req, res, next) => {

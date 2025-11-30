@@ -67,4 +67,15 @@ export const getTopCustomers = async (tenantId) => {
     }
 };
 
+export const getTenants = async () => {
+    try {
+        const response = await api.get('/api/tenants');
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching tenants:', error);
+        // Fallback to empty array if backend is unavailable
+        return [];
+    }
+};
+
 export default api;

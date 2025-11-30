@@ -4,6 +4,34 @@ const router = express.Router();
 const prisma = require('../prisma');
 
 /**
+ * GET /api/tenants
+ * List all tenants (without sensitive data like accessToken)
+ */
+router.get('/', async (req, res) => {
+    try {
+        const tenants = await prisma.tenant.findMany({
+            select: {
+                id: true,
+                name: true,
+                shopifyDomain: true,
+                createdAt: true,
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
+        });
+
+        res.json(tenants);
+    } catch (error) {
+        console.error('Error fetching tenants:', error);
+        res.status(500).json({
+            error: 'Failed to fetch tenants',
+            message: error.message,
+        });
+    }
+});
+
+/**
  * POST /api/tenants/onboard
  * Create a new tenant (Shopify store)
  * Body: { name, shopifyDomain, accessToken }

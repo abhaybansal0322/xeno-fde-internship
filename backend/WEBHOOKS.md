@@ -174,16 +174,16 @@ All incoming webhooks must be verified using HMAC-SHA256:
 
 ### Using ngrok (Local Development)
 
-1. **Install ngrok**
+1. **Install Dependencies**
    ```bash
-   # Download from https://ngrok.com/download
-   # Or via npm
-   npm install -g ngrok
+   # The project includes ngrok as a dev dependency
+   npm install
    ```
 
 2. **Start ngrok tunnel**
    ```bash
-   ngrok http 3000
+   # Use the built-in script (starts on port 4000)
+   npm run tunnel
    ```
 
 3. **Copy forwarding URL**
