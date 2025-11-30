@@ -1,4 +1,3 @@
-```javascript
 import { useSession, signIn, signOut } from "next-auth/react";
 import Link from "next/link";
 import { useTenant } from "../contexts/TenantContext";
@@ -65,4 +64,3 @@ export default function Header() {
         </header>
     );
 }
-```
