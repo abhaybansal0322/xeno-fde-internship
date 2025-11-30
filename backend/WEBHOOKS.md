@@ -166,55 +166,6 @@ All incoming webhooks must be verified using HMAC-SHA256:
   "orders_count": 0,
   "total_spent": "0.00",
   "phone": "+15142546011",
-  "addresses": []
-}
-```
-
-## Testing Webhooks
-
-### Using ngrok (Local Development)
-
-1. **Install Dependencies**
-   ```bash
-   # The project includes ngrok as a dev dependency
-   npm install
-   ```
-
-2. **Start ngrok tunnel**
-   ```bash
-   # Use the built-in script (starts on port 4000)
-   npm run tunnel
-   ```
-
-3. **Copy forwarding URL**
-   ```
-   Forwarding: https://abc123.ngrok.io -> http://localhost:3000
-   ```
-
-4. **Update webhook URLs**
-   - Replace `your-domain.com` with `abc123.ngrok.io`
-   - Example: `https://abc123.ngrok.io/webhooks/shopify/orders_create`
-
-5. **Monitor requests**
-   - View ngrok dashboard: `http://localhost:4040`
-   - See all incoming webhook requests in real-time
-
-### Manual Testing with curl
-
-```bash
-# Generate HMAC signature (requires openssl)
-PAYLOAD='{"id":123,"test":true}'
-SECRET="your_shopify_api_secret"
-HMAC=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" -binary | base64)
-
-# Send test webhook
-curl -X POST https://your-domain.com/webhooks/shopify/orders_create \
-  -H "Content-Type: application/json" \
-  -H "X-Shopify-Hmac-Sha256: $HMAC" \
-  -H "X-Shopify-Shop-Domain: test-store.myshopify.com" \
-  -H "X-Shopify-Topic: orders/create" \
-  -H "X-Shopify-API-Version: 2024-01" \
-  -d "$PAYLOAD"
 ```
 
 ## Webhook Headers Reference
