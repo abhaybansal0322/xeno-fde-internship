@@ -119,7 +119,7 @@ async function syncAllTenants() {
 
 /**
  * Initialize cron job
- * Schedule: Every 10 minutes (*/10 * * * *)
+ * Schedule: Every 10 minutes (* /10 * * * *)
  */
 function initializeCronJobs() {
     const isEnabled = process.env.ENABLE_CRON === 'true';
