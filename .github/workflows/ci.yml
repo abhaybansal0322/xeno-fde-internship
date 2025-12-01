@@ -156,7 +156,7 @@ jobs:
 
       - name: Start services with Docker Compose
         run: |
-          docker-compose up -d
+          docker compose up -d
           sleep 30  # Wait for services to be ready
 
       - name: Run smoke tests
@@ -166,8 +166,8 @@ jobs:
 
       - name: Display backend logs
         if: always()
-        run: docker-compose logs backend
+        run: docker compose logs backend
 
       - name: Stop services
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
