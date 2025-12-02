@@ -6,8 +6,8 @@ jest.mock('../../lib/api')
 
 describe('TopCustomers', () => {
     const mockCustomers = [
-        { id: 1, firstName: 'John', lastName: 'Doe', email: 'john@example.com', totalOrders: 5, totalSpent: 500 },
-        { id: 2, firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', totalOrders: 3, totalSpent: 300 },
+        { id: 1, name: 'John Doe', email: 'john@example.com', totalOrders: 5, totalSpent: 500 },
+        { id: 2, name: 'Jane Smith', email: 'jane@example.com', totalOrders: 3, totalSpent: 300 },
     ]
 
     beforeEach(() => {
