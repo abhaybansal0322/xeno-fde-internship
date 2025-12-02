@@ -8,6 +8,7 @@ const tenantsRouter = require('./routes/tenants');
 const ingestRouter = require('./routes/ingest');
 const webhooksRouter = require('./routes/webhooks');
 const metricsRouter = require('./routes/metrics');
+const authRouter = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -45,6 +46,7 @@ app.use('/api/tenants', tenantsRouter);
 app.use('/api/ingest', ingestRouter);
 app.use('/webhooks/shopify', webhooksRouter);
 app.use('/api/metrics', metricsRouter);
+app.use('/api/auth', authRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -66,4 +66,32 @@ export const getTenants = async () => {
     }
 };
 
+// Authentication functions
+export const registerUser = async (email, password, name) => {
+    try {
+        const response = await api.post('/api/auth/register', {
+            email,
+            password,
+            name,
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error registering user:', error);
+        throw error;
+    }
+};
+
+export const loginUser = async (email, password) => {
+    try {
+        const response = await api.post('/api/auth/login', {
+            email,
+            password,
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error logging in:', error);
+        throw error;
+    }
+};
+
 export default api;

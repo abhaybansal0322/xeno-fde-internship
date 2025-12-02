@@ -1,5 +1,3 @@
-// Prisma schema for Shopify multi-tenant data ingestion
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,85 +7,82 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Tenant model - represents a Shopify store
 model Tenant {
-  id            String    @id @default(uuid())
+  id            String     @id @default(uuid())
   name          String
-  shopifyDomain String    @unique
-  accessToken   String    // Store securely - encrypt in production
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Relations
+  shopifyDomain String     @unique
+  accessToken   String
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
   customers     Customer[]
-  products      Product[]
   orders        Order[]
-  
+  products      Product[]
+
   @@map("tenants")
 }
 
-// Customer model - Shopify customers
 model Customer {
   id         String   @id @default(uuid())
   tenantId   String
-  shopifyId  String   // Shopify customer ID (as string)
+  shopifyId  String
   email      String?
   firstName  String?
   lastName   String?
   totalSpent Decimal  @default(0) @db.Decimal(10, 2)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  
-  // Relations
   tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orders     Order[]
-  
-  // Ensure unique customer per tenant
+
   @@unique([tenantId, shopifyId])
   @@index([tenantId])
   @@map("customers")
 }
 
-// Product model - Shopify products
 model Product {
   id          String   @id @default(uuid())
   tenantId    String
-  shopifyId   String   // Shopify product ID (as string)
+  shopifyId   String
   title       String
   vendor      String?
   productType String?
   price       Decimal  @default(0) @db.Decimal(10, 2)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  // Relations
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  // Ensure unique product per tenant
+
   @@unique([tenantId, shopifyId])
   @@index([tenantId])
   @@map("products")
 }
 
-// Order model - Shopify orders
 model Order {
   id          String    @id @default(uuid())
   tenantId    String
-  shopifyId   String    // Shopify order ID (as string)
-  customerId  String?   // Nullable - guest checkouts possible
+  shopifyId   String
+  customerId  String?
   orderNumber String?
   totalPrice  Decimal   @default(0) @db.Decimal(10, 2)
-  orderDate   DateTime  // When order was created in Shopify
+  orderDate   DateTime
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  
-  // Relations
+  customer    Customer? @relation(fields: [customerId], references: [id])
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  
-  // Ensure unique order per tenant
+
   @@unique([tenantId, shopifyId])
   @@index([tenantId])
   @@index([orderDate])
   @@map("orders")
+}
+
+// User model for authentication
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // Hashed password
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
 }
