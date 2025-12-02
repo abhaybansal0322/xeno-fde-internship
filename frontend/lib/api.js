@@ -21,10 +21,25 @@ export const getMetrics = async (tenantId) => {
     }
 };
 
-export const getOrdersTimeSeries = async (tenantId, dateRange) => {
+export const getOrdersTimeSeries = async (tenantId, range) => {
     try {
-        const response = await api.get(`/api/metrics/orders?tenantId=${tenantId}&range=${dateRange}`);
-        return response.data;
+        let start = new Date();
+        const end = new Date();
+
+        if (range === '7d') {
+            start.setDate(start.getDate() - 7);
+        } else if (range === '30d') {
+            start.setDate(start.getDate() - 30);
+        } else {
+            // All time - set start to null or very old date
+            start = null;
+        }
+
+        const startParam = start ? `&start=${start.toISOString()}` : '';
+        const endParam = `&end=${end.toISOString()}`;
+
+        const response = await api.get(`/api/metrics?tenantId=${tenantId}${startParam}${endParam}`);
+        return response.data.ordersByDate;
     } catch (error) {
         console.error('Error fetching orders time series:', error);
         throw error;
@@ -33,8 +48,8 @@ export const getOrdersTimeSeries = async (tenantId, dateRange) => {
 
 export const getTopCustomers = async (tenantId) => {
     try {
-        const response = await api.get(`/api/metrics/top-customers?tenantId=${tenantId}`);
-        return response.data;
+        const response = await api.get(`/api/metrics?tenantId=${tenantId}`);
+        return response.data.topCustomers;
     } catch (error) {
         console.error('Error fetching top customers:', error);
         throw error;

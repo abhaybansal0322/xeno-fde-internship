@@ -50,25 +50,19 @@ export default function TopCustomers({ tenantId }) {
                                 Email
                             </th>
                             <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Orders
-                            </th>
-                            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 Total Spent
                             </th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {customers.length > 0 ? (
-                            customers.map((customer) => (
-                                <tr key={customer.id}>
+                            customers.map((customer, index) => (
+                                <tr key={index}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        {customer.firstName} {customer.lastName}
+                                        {customer.name}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {customer.email}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                                        {customer.totalOrders}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
                                         ${customer.totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -77,7 +71,7 @@ export default function TopCustomers({ tenantId }) {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
+                                <td colSpan="3" className="px-6 py-4 text-center text-sm text-gray-500">
                                     No customers found
                                 </td>
                             </tr>
