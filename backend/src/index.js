@@ -25,20 +25,28 @@ app.use(cors({
             return callback(null, true);
         }
         
+        // Normalize URLs (remove trailing slashes for comparison)
+        const normalizeUrl = (url) => {
+            if (!url) return url;
+            return url.replace(/\/$/, '');
+        };
+        
         // In production, check against allowed origins
         const allowedOrigins = [
             process.env.FRONTEND_URL,
             process.env.NEXTAUTH_URL, // Also check NextAuth URL
             'http://localhost:3000',
             'http://localhost:3001',
-        ].filter(Boolean);
+        ].filter(Boolean).map(normalizeUrl);
+        
+        const normalizedOrigin = normalizeUrl(origin);
         
         // If FRONTEND_URL is set, use it; otherwise allow all in production (less secure but works)
-        if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        if (allowedOrigins.length === 0 || allowedOrigins.includes(normalizedOrigin)) {
             callback(null, true);
         } else {
             // Log for debugging
-            console.log(`CORS blocked origin: ${origin}, allowed: ${allowedOrigins.join(', ')}`);
+            console.log(`CORS blocked origin: ${origin} (normalized: ${normalizedOrigin}), allowed: ${allowedOrigins.join(', ')}`);
             callback(null, true); // Allow for now, can be made stricter later
         }
     },

@@ -27,13 +27,14 @@ Your dashboard now has full Shopify integration! You can:
    - Enter app name: "Xeno Dashboard" (or any name)
    - Click **Create app**
 
-4. **Configure API Scopes**
+4. **Configure API Scopes** ⚠️ **CRITICAL - DO NOT SKIP THIS STEP**
    - Click **Configure Admin API scopes**
-   - Select the following scopes:
-     - ✅ `read_customers`
-     - ✅ `read_orders`
-     - ✅ `read_products`
+   - **You MUST select ALL of these scopes:**
+     - ✅ `read_customers` - **Required for customer data**
+     - ✅ `read_orders` - **Required for order data**
+     - ✅ `read_products` - **Required for product data**
    - Click **Save**
+   - ⚠️ **If you skip this step, you'll get 401 errors when syncing!**
 
 5. **Install App and Get Token**
    - Click **Install app**

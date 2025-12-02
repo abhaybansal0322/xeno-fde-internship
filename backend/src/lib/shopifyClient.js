@@ -42,8 +42,39 @@ async function fetchAllResources(initialUrl, accessToken, resourceKey) {
                 }
             }
         } catch (error) {
-            console.error(`Error fetching ${resourceKey}:`, error.message);
-            throw new Error(`Failed to fetch ${resourceKey}: ${error.message}`);
+            if (error.response) {
+                const status = error.response.status;
+                const statusText = error.response.statusText;
+                const errorData = error.response.data;
+                
+                if (status === 401) {
+                    console.error(`Shopify API 401 Unauthorized for ${resourceKey}:`, {
+                        status,
+                        statusText,
+                        error: errorData?.errors || errorData?.error || 'Invalid or expired access token',
+                        url: nextUrl || initialUrl,
+                    });
+                    throw new Error(`Shopify API authentication failed (401). Please check your access token and API permissions. Error: ${errorData?.errors?.[0]?.message || errorData?.error || 'Unauthorized'}`);
+                } else if (status === 403) {
+                    console.error(`Shopify API 403 Forbidden for ${resourceKey}:`, {
+                        status,
+                        statusText,
+                        error: errorData?.errors || errorData?.error,
+                    });
+                    throw new Error(`Shopify API permission denied (403). Your access token may not have the required scopes. Error: ${errorData?.errors?.[0]?.message || errorData?.error || 'Forbidden'}`);
+                } else {
+                    console.error(`Error fetching ${resourceKey}:`, {
+                        status,
+                        statusText,
+                        error: errorData,
+                        message: error.message,
+                    });
+                    throw new Error(`Failed to fetch ${resourceKey}: ${status} ${statusText} - ${errorData?.errors?.[0]?.message || error.message}`);
+                }
+            } else {
+                console.error(`Error fetching ${resourceKey}:`, error.message);
+                throw new Error(`Failed to fetch ${resourceKey}: ${error.message}`);
+            }
         }
     }
 
