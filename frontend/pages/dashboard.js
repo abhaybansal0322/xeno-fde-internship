@@ -6,13 +6,15 @@ import Header from '../components/Header';
 import MetricCard from '../components/MetricCard';
 import OrdersChart from '../components/OrdersChart';
 import TopCustomers from '../components/TopCustomers';
+import SyncButton from '../components/SyncButton';
+import OnboardTenant from '../components/OnboardTenant';
 import { getMetrics } from '../lib/api';
 import { useTenant } from '../contexts/TenantContext';
 
 export default function Dashboard() {
     const { data: session, status } = useSession();
     const router = useRouter();
-    const { tenantId } = useTenant();
+    const { tenantId, refreshTenants, setTenantId } = useTenant();
     const [metrics, setMetrics] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -57,9 +59,22 @@ export default function Dashboard() {
             <Header />
 
             <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-                    <p className="text-slate-500 mt-2">Overview of your store performance</p>
+                <div className="mb-8 flex justify-between items-start">
+                    <div>
+                        <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+                        <p className="text-slate-500 mt-2">Overview of your store performance</p>
+                    </div>
+                    {tenantId && (
+                        <SyncButton 
+                            tenantId={tenantId} 
+                            onSyncComplete={() => {
+                                // Refresh metrics after sync
+                                if (tenantId) {
+                                    getMetrics(tenantId).then(setMetrics).catch(console.error);
+                                }
+                            }} 
+                        />
+                    )}
                 </div>
 
                 {/* Metrics Grid */}
@@ -101,8 +116,30 @@ export default function Dashboard() {
                     </div>
                 )}
                 {!tenantId && (
-                    <div className="text-center py-12 bg-white border border-slate-200 rounded-xl">
-                        <p className="text-slate-500">Please select a tenant to view dashboard data.</p>
+                    <div className="space-y-6">
+                        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">
+                            <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                            <h3 className="mt-4 text-lg font-medium text-slate-900">No Store Connected</h3>
+                            <p className="mt-2 text-sm text-slate-500">
+                                Connect your Shopify store to start viewing analytics and metrics.
+                            </p>
+                        </div>
+                        <OnboardTenant 
+                            onSuccess={async (tenant) => {
+                                // Refresh tenant list and select new tenant
+                                if (refreshTenants) {
+                                    await refreshTenants();
+                                    // Select the newly created tenant
+                                    if (tenant.tenantId && setTenantId) {
+                                        setTenantId(tenant.tenantId);
+                                    }
+                                } else {
+                                    router.reload();
+                                }
+                            }} 
+                        />
                     </div>
                 )}
             </main>

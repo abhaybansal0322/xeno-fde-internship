@@ -9,32 +9,32 @@ export function TenantProvider({ children }) {
     const [loading, setLoading] = useState(true);
     const [mounted, setMounted] = useState(false);
 
-    useEffect(() => {
-        setMounted(true);
-        const fetchTenants = async () => {
-            try {
-                const data = await getTenants();
-                setTenants(data);
+    const fetchTenants = async () => {
+        try {
+            const data = await getTenants();
+            setTenants(data);
 
-                // Try to restore from localStorage (only on client-side)
-                if (typeof window !== 'undefined') {
-                    const savedTenantId = localStorage.getItem('selectedTenantId');
-                    if (savedTenantId && data.find(t => t.id === savedTenantId)) {
-                        setTenantId(savedTenantId);
-                    } else if (data.length > 0) {
-                        // Select first tenant by default
-                        setTenantId(data[0].id);
-                    }
-                } else if (data.length > 0) {
+            // Try to restore from localStorage (only on client-side)
+            if (typeof window !== 'undefined') {
+                const savedTenantId = localStorage.getItem('selectedTenantId');
+                if (savedTenantId && data.find(t => t.id === savedTenantId)) {
+                    setTenantId(savedTenantId);
+                } else if (data.length > 0 && !tenantId) {
+                    // Select first tenant by default if none selected
                     setTenantId(data[0].id);
                 }
-            } catch (error) {
-                console.error('Error loading tenants:', error);
-            } finally {
-                setLoading(false);
+            } else if (data.length > 0 && !tenantId) {
+                setTenantId(data[0].id);
             }
-        };
+        } catch (error) {
+            console.error('Error loading tenants:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
+    useEffect(() => {
+        setMounted(true);
         fetchTenants();
     }, []);
 
@@ -46,7 +46,7 @@ export function TenantProvider({ children }) {
     };
 
     return (
-        <TenantContext.Provider value={{ tenantId, tenants, loading, setTenantId: selectTenant }}>
+        <TenantContext.Provider value={{ tenantId, tenants, loading, setTenantId: selectTenant, refreshTenants: fetchTenants }}>
             {children}
         </TenantContext.Provider>
     );

@@ -130,4 +130,30 @@ export const loginUser = async (email, password) => {
     }
 };
 
+// Tenant management functions
+export const onboardTenant = async (name, shopifyDomain, accessToken) => {
+    try {
+        const response = await api.post('/api/tenants/onboard', {
+            name,
+            shopifyDomain,
+            accessToken,
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error onboarding tenant:', error);
+        throw error;
+    }
+};
+
+// Data sync functions
+export const syncTenantData = async (tenantId) => {
+    try {
+        const response = await api.post(`/api/ingest/sync?tenantId=${tenantId}`);
+        return response.data;
+    } catch (error) {
+        console.error('Error syncing tenant data:', error);
+        throw error;
+    }
+};
+
 export default api;
