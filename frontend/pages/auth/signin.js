@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import Head from 'next/head';
 
 export default function SignIn() {
@@ -93,7 +94,7 @@ export default function SignIn() {
 
                 <div className="mt-6 text-center">
                     <p className="text-sm text-slate-500">
-                        Don't have an account? <a href="/auth/signup" className="text-blue-600 hover:text-blue-700 font-medium hover:underline">Sign up</a>
+                        Don&apos;t have an account? <Link href="/auth/signup" className="text-blue-600 hover:text-blue-700 font-medium hover:underline">Sign up</Link>
                     </p>
                 </div>
             </div>
