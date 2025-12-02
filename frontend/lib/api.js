@@ -9,7 +9,43 @@ if (!API_URL.startsWith('http')) {
 
 const api = axios.create({
     baseURL: API_URL,
+    timeout: 10000, // 10 second timeout
+    headers: {
+        'Content-Type': 'application/json',
+    },
 });
+
+// Add request interceptor for debugging
+api.interceptors.request.use(
+    (config) => {
+        console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+        return config;
+    },
+    (error) => {
+        console.error('[API] Request error:', error);
+        return Promise.reject(error);
+    }
+);
+
+// Add response interceptor for debugging
+api.interceptors.response.use(
+    (response) => {
+        console.log(`[API] Response: ${response.status} ${response.config.url}`);
+        return response;
+    },
+    (error) => {
+        if (error.code === 'ECONNREFUSED') {
+            console.error('[API] Connection refused - Is the backend server running?');
+        } else if (error.code === 'ERR_NETWORK') {
+            console.error('[API] Network error - Check your connection and backend URL');
+        } else if (error.response) {
+            console.error(`[API] Error ${error.response.status}:`, error.response.data);
+        } else {
+            console.error('[API] Error:', error.message);
+        }
+        return Promise.reject(error);
+    }
+);
 
 export const getMetrics = async (tenantId) => {
     try {

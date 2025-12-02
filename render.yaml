@@ -19,6 +19,11 @@ services:
         sync: false
       - key: ENABLE_CRON
         value: true
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: xeno-frontend
+          property: host
 
   # Frontend Service
   - type: web
@@ -33,3 +38,10 @@ services:
           type: web
           name: xeno-backend
           property: host
+      - key: NEXTAUTH_URL
+        fromService:
+          type: web
+          name: xeno-frontend
+          property: host
+      - key: NEXTAUTH_SECRET
+        sync: false
