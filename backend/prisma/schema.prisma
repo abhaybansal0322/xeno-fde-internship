@@ -10,14 +10,18 @@ datasource db {
 model Tenant {
   id            String     @id @default(uuid())
   name          String
-  shopifyDomain String     @unique
+  shopifyDomain String
   accessToken   String
+  userId        String     // Link to user who owns this tenant
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   customers     Customer[]
   orders        Order[]
   products      Product[]
 
+  @@unique([userId, shopifyDomain]) // Each user can have unique shopifyDomain
+  @@index([userId])
   @@map("tenants")
 }
 
@@ -83,6 +87,7 @@ model User {
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  tenants   Tenant[] // User's Shopify stores
 
   @@map("users")
 }

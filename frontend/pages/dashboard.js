@@ -8,8 +8,11 @@ import OrdersChart from '../components/OrdersChart';
 import TopCustomers from '../components/TopCustomers';
 import SyncButton from '../components/SyncButton';
 import OnboardTenant from '../components/OnboardTenant';
+import DataListModal from '../components/DataListModal';
 import { getMetrics } from '../lib/api';
 import { useTenant } from '../contexts/TenantContext';
+
+import { setUserEmail } from '../lib/api';
 
 export default function Dashboard() {
     const { data: session, status } = useSession();
@@ -17,6 +20,15 @@ export default function Dashboard() {
     const { tenantId, refreshTenants, setTenantId } = useTenant();
     const [metrics, setMetrics] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [modalType, setModalType] = useState(null);
+
+    // Set user email for API requests
+    useEffect(() => {
+        if (session?.user?.email) {
+            setUserEmail(session.user.email);
+        }
+    }, [session]);
 
     useEffect(() => {
         if (status === 'unauthenticated') {
@@ -70,7 +82,15 @@ export default function Dashboard() {
                             onSyncComplete={() => {
                                 // Refresh metrics after sync
                                 if (tenantId) {
-                                    getMetrics(tenantId).then(setMetrics).catch(console.error);
+                                    setLoading(true);
+                                    getMetrics(tenantId)
+                                        .then((data) => {
+                                            setMetrics(data);
+                                            // Force refresh of child components
+                                            setTenantId(tenantId);
+                                        })
+                                        .catch(console.error)
+                                        .finally(() => setLoading(false));
                                 }
                             }} 
                         />
@@ -82,6 +102,13 @@ export default function Dashboard() {
                     <MetricCard
                         title="Total Customers"
                         value={loading ? "..." : metrics?.totalCustomers?.toLocaleString()}
+                        clickable={!!tenantId && !loading && metrics?.totalCustomers > 0}
+                        onClick={() => {
+                            if (tenantId && metrics?.totalCustomers > 0) {
+                                setModalType('customers');
+                                setModalOpen(true);
+                            }
+                        }}
                         icon={
                             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -91,6 +118,13 @@ export default function Dashboard() {
                     <MetricCard
                         title="Total Orders"
                         value={loading ? "..." : metrics?.totalOrders?.toLocaleString()}
+                        clickable={!!tenantId && !loading && metrics?.totalOrders > 0}
+                        onClick={() => {
+                            if (tenantId && metrics?.totalOrders > 0) {
+                                setModalType('orders');
+                                setModalOpen(true);
+                            }
+                        }}
                         icon={
                             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -107,6 +141,14 @@ export default function Dashboard() {
                         }
                     />
                 </div>
+
+                {/* Data List Modal */}
+                <DataListModal
+                    isOpen={modalOpen}
+                    onClose={() => setModalOpen(false)}
+                    type={modalType}
+                    tenantId={tenantId}
+                />
 
                 {/* Charts and Tables */}
                 {tenantId && (

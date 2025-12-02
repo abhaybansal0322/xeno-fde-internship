@@ -2,19 +2,56 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../prisma');
+const { requireUserEmail } = require('../middleware/auth');
+
+/**
+ * Helper to verify tenant belongs to user
+ */
+async function verifyTenantAccess(tenantId, userEmail) {
+    const user = await prisma.user.findUnique({
+        where: { email: userEmail },
+    });
+
+    if (!user) {
+        return { valid: false, error: 'User not found' };
+    }
+
+    const tenant = await prisma.tenant.findFirst({
+        where: {
+            id: tenantId,
+            userId: user.id,
+        },
+    });
+
+    if (!tenant) {
+        return { valid: false, error: 'Access denied - tenant does not belong to user' };
+    }
+
+    return { valid: true };
+}
 
 /**
  * GET /api/metrics?tenantId=<id>&start=<date>&end=<date>
  * Get analytics metrics for a tenant
  * Query params: tenantId (required), start (optional), end (optional)
+ * Requires X-User-Email header
  */
-router.get('/', async (req, res) => {
+router.get('/', requireUserEmail, async (req, res) => {
     try {
         const { tenantId, start, end } = req.query;
+        const userEmail = req.userEmail;
 
         if (!tenantId) {
             return res.status(400).json({
                 error: 'Missing required query parameter: tenantId',
+            });
+        }
+
+        // Verify tenant access
+        const accessCheck = await verifyTenantAccess(tenantId, userEmail);
+        if (!accessCheck.valid) {
+            return res.status(403).json({
+                error: accessCheck.error,
             });
         }
 
@@ -101,6 +138,134 @@ router.get('/', async (req, res) => {
 
         res.status(500).json({
             error: 'Failed to fetch metrics',
+            message: error.message,
+        });
+    }
+});
+
+/**
+ * GET /api/metrics/customers?tenantId=<id>
+ * Get list of all customers for a tenant
+ * Requires X-User-Email header
+ */
+router.get('/customers', requireUserEmail, async (req, res) => {
+    try {
+        const { tenantId } = req.query;
+        const userEmail = req.userEmail;
+
+        if (!tenantId) {
+            return res.status(400).json({
+                error: 'Missing required query parameter: tenantId',
+            });
+        }
+
+        // Verify tenant access
+        const accessCheck = await verifyTenantAccess(tenantId, userEmail);
+        if (!accessCheck.valid) {
+            return res.status(403).json({
+                error: accessCheck.error,
+            });
+        }
+
+        const customers = await prisma.customer.findMany({
+            where: { tenantId },
+            select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                totalSpent: true,
+                createdAt: true,
+            },
+            orderBy: { totalSpent: 'desc' },
+        });
+
+        const formattedCustomers = customers.map(customer => ({
+            id: customer.id,
+            name: `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'N/A',
+            email: customer.email || 'N/A',
+            totalSpent: parseFloat(customer.totalSpent),
+            createdAt: customer.createdAt,
+        }));
+
+        res.json({
+            tenantId,
+            customers: formattedCustomers,
+            count: formattedCustomers.length,
+        });
+    } catch (error) {
+        console.error('Error fetching customers:', error);
+        res.status(500).json({
+            error: 'Failed to fetch customers',
+            message: error.message,
+        });
+    }
+});
+
+/**
+ * GET /api/metrics/orders?tenantId=<id>
+ * Get list of all orders for a tenant
+ * Requires X-User-Email header
+ */
+router.get('/orders', requireUserEmail, async (req, res) => {
+    try {
+        const { tenantId } = req.query;
+        const userEmail = req.userEmail;
+
+        if (!tenantId) {
+            return res.status(400).json({
+                error: 'Missing required query parameter: tenantId',
+            });
+        }
+
+        // Verify tenant access
+        const accessCheck = await verifyTenantAccess(tenantId, userEmail);
+        if (!accessCheck.valid) {
+            return res.status(403).json({
+                error: accessCheck.error,
+            });
+        }
+
+        const orders = await prisma.order.findMany({
+            where: { tenantId },
+            select: {
+                id: true,
+                orderNumber: true,
+                totalPrice: true,
+                orderDate: true,
+                createdAt: true,
+                customer: {
+                    select: {
+                        email: true,
+                        firstName: true,
+                        lastName: true,
+                    },
+                },
+            },
+            orderBy: { orderDate: 'desc' },
+        });
+
+        const formattedOrders = orders.map(order => ({
+            id: order.id,
+            orderNumber: order.orderNumber || 'N/A',
+            totalPrice: parseFloat(order.totalPrice),
+            orderDate: order.orderDate,
+            customerName: order.customer 
+                ? `${order.customer.firstName || ''} ${order.customer.lastName || ''}`.trim() || order.customer.email || 'Guest'
+                : 'Guest',
+            customerEmail: order.customer?.email || 'N/A',
+            createdAt: order.createdAt,
+        }));
+
+        res.json({
+            tenantId,
+            orders: formattedOrders,
+            count: formattedOrders.length,
+        });
+    } catch (error) {
+        console.error('Error fetching orders:', error);
+        res.status(500).json({
+            error: 'Failed to fetch orders',
             message: error.message,
         });
     }

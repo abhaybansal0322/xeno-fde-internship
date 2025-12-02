@@ -1,13 +1,22 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getTenants } from '../lib/api';
+import { useSession } from 'next-auth/react';
+import { getTenants, setUserEmail } from '../lib/api';
 
 const TenantContext = createContext();
 
 export function TenantProvider({ children }) {
+    const { data: session } = useSession();
     const [tenantId, setTenantId] = useState(null);
     const [tenants, setTenants] = useState([]);
     const [loading, setLoading] = useState(true);
     const [mounted, setMounted] = useState(false);
+
+    // Set user email for API requests
+    useEffect(() => {
+        if (session?.user?.email) {
+            setUserEmail(session.user.email);
+        }
+    }, [session]);
 
     const fetchTenants = useCallback(async () => {
         try {

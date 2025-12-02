@@ -15,6 +15,27 @@ const api = axios.create({
     },
 });
 
+// Store user email for API requests (set by components using useSession)
+let currentUserEmail = null;
+
+export const setUserEmail = (email) => {
+    currentUserEmail = email;
+};
+
+// Add interceptor to include user email in headers
+api.interceptors.request.use(
+    (config) => {
+        // Add user email to headers if available
+        if (currentUserEmail) {
+            config.headers['X-User-Email'] = currentUserEmail;
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
+
 // Add request interceptor for debugging
 api.interceptors.request.use(
     (config) => {
@@ -152,6 +173,28 @@ export const syncTenantData = async (tenantId) => {
         return response.data;
     } catch (error) {
         console.error('Error syncing tenant data:', error);
+        throw error;
+    }
+};
+
+// Get customers list
+export const getCustomersList = async (tenantId) => {
+    try {
+        const response = await api.get(`/api/metrics/customers?tenantId=${tenantId}`);
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching customers list:', error);
+        throw error;
+    }
+};
+
+// Get orders list
+export const getOrdersList = async (tenantId) => {
+    try {
+        const response = await api.get(`/api/metrics/orders?tenantId=${tenantId}`);
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching orders list:', error);
         throw error;
     }
 };
