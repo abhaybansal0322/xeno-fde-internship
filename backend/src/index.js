@@ -1,6 +1,7 @@
 // Express server entry point
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const prisma = require('./prisma');
 
 // Import routes
@@ -12,6 +13,12 @@ const authRouter = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// CORS middleware - allow requests from frontend
+app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+}));
 
 // Middleware for parsing JSON (except for webhooks which need raw body)
 app.use((req, res, next) => {
