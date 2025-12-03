@@ -17,43 +17,7 @@ const PORT = process.env.PORT || 4000;
 
 // CORS middleware - allow requests from frontend
 app.use(cors({
-    origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        
-        // In development, allow all origins
-        if (process.env.NODE_ENV === 'development') {
-            return callback(null, true);
-        }
-        
-        // Normalize URLs (remove trailing slashes for comparison)
-        const normalizeUrl = (url) => {
-            if (!url) return url;
-            return url.replace(/\/$/, '');
-        };
-        
-        // In production, check against allowed origins
-        const allowedOrigins = [
-            process.env.FRONTEND_URL,
-            process.env.NEXTAUTH_URL, // Also check NextAuth URL
-            // Deployed frontend on Vercel
-            'https://xeno-frontend-teal.vercel.app',
-            'http://localhost:3000',
-            'http://localhost:3001',
-        ].filter(Boolean).map(normalizeUrl);
-        
-        const normalizedOrigin = normalizeUrl(origin);
-        
-        // If FRONTEND_URL is set, use it; otherwise allow all in production (less secure but works)
-        if (allowedOrigins.length === 0 || allowedOrigins.includes(normalizedOrigin)) {
-            callback(null, true);
-        } else {
-            // Log for debugging
-            console.log(`CORS blocked origin: ${origin} (normalized: ${normalizedOrigin}), allowed: ${allowedOrigins.join(', ')}`);
-            callback(null, true); // Allow for now, can be made stricter later
-        }
-    },
-    credentials: true,
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
