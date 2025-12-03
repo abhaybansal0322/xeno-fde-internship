@@ -5,20 +5,25 @@ import { getTenants, setUserEmail } from '../lib/api';
 const TenantContext = createContext();
 
 export function TenantProvider({ children }) {
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
     const [tenantId, setTenantId] = useState(null);
     const [tenants, setTenants] = useState([]);
     const [loading, setLoading] = useState(true);
     const [mounted, setMounted] = useState(false);
 
-    // Set user email for API requests
+    // Set user email for API requests when user is authenticated
     useEffect(() => {
-        if (session?.user?.email) {
+        if (status === 'authenticated' && session?.user?.email) {
             setUserEmail(session.user.email);
         }
-    }, [session]);
+    }, [status, session]);
 
     const fetchTenants = useCallback(async () => {
+        // Do not attempt to load tenants until the user is authenticated
+        if (status !== 'authenticated' || !session?.user?.email) {
+            return;
+        }
+
         try {
             const data = await getTenants();
             setTenants(data);
@@ -40,7 +45,7 @@ export function TenantProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [session, status]);
 
     useEffect(() => {
         setMounted(true);
