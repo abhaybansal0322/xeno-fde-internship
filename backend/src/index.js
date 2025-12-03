@@ -16,10 +16,14 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // CORS middleware - allow requests from frontend
+
+
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: true,            // reflect request origin (works with credentials)
+  credentials: true,
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  // include your custom header(s) here (case-insensitive)
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Email', 'x-user-email'],
 }));
 
 // Middleware for parsing JSON (except for webhooks which need raw body)

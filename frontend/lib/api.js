@@ -72,7 +72,10 @@ api.interceptors.response.use(
 
 export const getMetrics = async (tenantId) => {
     try {
-        const response = await api.get(`/api/metrics?tenantId=${tenantId}`);
+        // Increase timeout for comprehensive metrics endpoint
+        const response = await api.get(`/api/metrics?tenantId=${tenantId}`, {
+            timeout: 30000, // 30 seconds timeout for potentially slow queries
+        });
         return response.data;
     } catch (error) {
         console.error('Error fetching metrics:', error);
@@ -107,17 +110,22 @@ export const getOrdersTimeSeries = async (tenantId, range) => {
 
 export const getTopCustomers = async (tenantId) => {
     try {
-        const response = await api.get(`/api/metrics?tenantId=${tenantId}`);
-        return response.data.topCustomers;
+        // Use dedicated endpoint with longer timeout for top customers
+        const response = await api.get(`/api/metrics/top-customers?tenantId=${tenantId}`, {
+            timeout: 30000, // 30 seconds timeout for potentially slow queries
+        });
+        return response.data.topCustomers || [];
     } catch (error) {
         console.error('Error fetching top customers:', error);
-        throw error;
+        // Return empty array on error instead of throwing to prevent UI breakage
+        return [];
     }
 };
 
 export const getTenants = async () => {
     try {
         const response = await api.get('/api/tenants');
+        console.log('Tenants:', response.data);
         return response.data;
     } catch (error) {
         console.error('Error fetching tenants:', error);
@@ -197,12 +205,22 @@ export const onboardTenant = async (name, shopifyDomain, accessToken) => {
 };
 
 // Data sync functions
+/**
+ * Sync tenant data from Shopify
+ * This operation can take several minutes for large stores
+ * Uses extended timeout to handle long-running sync operations
+ */
 export const syncTenantData = async (tenantId) => {
     try {
-        const response = await api.post(`/api/ingest/sync?tenantId=${tenantId}`);
+        const response = await api.post(`/api/ingest/sync?tenantId=${tenantId}`, {}, {
+            timeout: 300000, // 5 minutes timeout for sync operations
+        });
         return response.data;
     } catch (error) {
         console.error('Error syncing tenant data:', error);
+        if (error.code === 'ECONNABORTED') {
+            throw new Error('Sync operation timed out. This may happen with large stores. Please try again or contact support.');
+        }
         throw error;
     }
 };

@@ -9,7 +9,7 @@ import TopCustomers from '../components/TopCustomers';
 import SyncButton from '../components/SyncButton';
 import OnboardTenant from '../components/OnboardTenant';
 import DataListModal from '../components/DataListModal';
-import { getMetrics } from '../lib/api';
+import { getMetrics, getCustomersList, getOrdersList } from '../lib/api';
 import { useTenant } from '../contexts/TenantContext';
 
 import { setUserEmail } from '../lib/api';
@@ -22,6 +22,8 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [modalOpen, setModalOpen] = useState(false);
     const [modalType, setModalType] = useState(null);
+    const [cachedCustomers, setCachedCustomers] = useState(null);
+    const [cachedOrders, setCachedOrders] = useState(null);
 
     // Set user email for API requests
     useEffect(() => {
@@ -43,6 +45,19 @@ export default function Dashboard() {
                 try {
                     const data = await getMetrics(tenantId);
                     setMetrics(data);
+                    
+                    // Pre-fetch customers and orders data for modal
+                    try {
+                        const [customersData, ordersData] = await Promise.all([
+                            getCustomersList(tenantId),
+                            getOrdersList(tenantId),
+                        ]);
+                        setCachedCustomers(customersData?.customers || customersData || []);
+                        setCachedOrders(ordersData?.orders || ordersData || []);
+                    } catch (err) {
+                        console.warn('Error pre-fetching modal data:', err);
+                        // Don't fail the whole metrics fetch if modal data fails
+                    }
                 } catch (error) {
                     console.error('Error fetching metrics:', error);
                 } finally {
@@ -51,6 +66,10 @@ export default function Dashboard() {
             };
 
             fetchMetrics();
+        } else {
+            // Reset cached data when tenant changes
+            setCachedCustomers(null);
+            setCachedOrders(null);
         }
     }, [status, tenantId]);
 
@@ -79,18 +98,26 @@ export default function Dashboard() {
                     {tenantId && (
                         <SyncButton 
                             tenantId={tenantId} 
-                            onSyncComplete={() => {
-                                // Refresh metrics after sync
+                            onSyncComplete={async () => {
+                                // Refresh metrics and modal data after sync
                                 if (tenantId) {
                                     setLoading(true);
-                                    getMetrics(tenantId)
-                                        .then((data) => {
-                                            setMetrics(data);
-                                            // Force refresh of child components
-                                            setTenantId(tenantId);
-                                        })
-                                        .catch(console.error)
-                                        .finally(() => setLoading(false));
+                                    try {
+                                        const [metricsData, customersData, ordersData] = await Promise.all([
+                                            getMetrics(tenantId),
+                                            getCustomersList(tenantId),
+                                            getOrdersList(tenantId),
+                                        ]);
+                                        setMetrics(metricsData);
+                                        setCachedCustomers(customersData?.customers || customersData || []);
+                                        setCachedOrders(ordersData?.orders || ordersData || []);
+                                        // Force refresh of child components
+                                        setTenantId(tenantId);
+                                    } catch (error) {
+                                        console.error('Error refreshing data after sync:', error);
+                                    } finally {
+                                        setLoading(false);
+                                    }
                                 }
                             }} 
                         />
@@ -101,10 +128,11 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-8">
                     <MetricCard
                         title="Total Customers"
-                        value={loading ? "..." : metrics?.totalCustomers?.toLocaleString()}
-                        clickable={!!tenantId && !loading && metrics?.totalCustomers > 0}
+                        value={loading ? "..." : metrics?.totalCustomers?.toLocaleString() || "0"}
+                        clickable={!!tenantId && !loading}
                         onClick={() => {
-                            if (tenantId && metrics?.totalCustomers > 0) {
+                            if (tenantId) {
+                                console.log('Opening customers modal for tenant:', tenantId);
                                 setModalType('customers');
                                 setModalOpen(true);
                             }
@@ -117,10 +145,10 @@ export default function Dashboard() {
                     />
                     <MetricCard
                         title="Total Orders"
-                        value={loading ? "..." : metrics?.totalOrders?.toLocaleString()}
-                        clickable={!!tenantId && !loading && metrics?.totalOrders > 0}
+                        value={loading ? "..." : metrics?.totalOrders?.toLocaleString() || "0"}
+                        clickable={!!tenantId && !loading}
                         onClick={() => {
-                            if (tenantId && metrics?.totalOrders > 0) {
+                            if (tenantId) {
                                 setModalType('orders');
                                 setModalOpen(true);
                             }
@@ -143,12 +171,19 @@ export default function Dashboard() {
                 </div>
 
                 {/* Data List Modal */}
-                <DataListModal
-                    isOpen={modalOpen}
-                    onClose={() => setModalOpen(false)}
-                    type={modalType}
-                    tenantId={tenantId}
-                />
+                {modalOpen && (
+                    <DataListModal
+                        isOpen={modalOpen}
+                        onClose={() => {
+                            setModalOpen(false);
+                            setModalType(null);
+                        }}
+                        type={modalType}
+                        tenantId={tenantId}
+                        customersData={modalType === 'customers' ? cachedCustomers : null}
+                        ordersData={modalType === 'orders' ? cachedOrders : null}
+                    />
+                )}
 
                 {/* Charts and Tables */}
                 {tenantId && (

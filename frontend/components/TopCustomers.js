@@ -72,7 +72,7 @@ export default function TopCustomers({ tenantId }) {
                                         {customer.email}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 text-right font-bold">
-                                        ${customer.totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        ${(customer.totalSpent || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </td>
                                 </tr>
                             ))

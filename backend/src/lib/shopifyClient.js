@@ -95,13 +95,65 @@ async function fetchCustomers(shopifyDomain, accessToken) {
 
     const customers = await fetchAllResources(url, accessToken, 'customers');
 
-    return customers.map(customer => ({
-        shopifyId: String(customer.id),
-        email: customer.email,
-        firstName: customer.first_name,
-        lastName: customer.last_name,
-        totalSpent: parseFloat(customer.total_spent) || 0,
-    }));
+    // Log first customer's raw data to see what Shopify is actually returning
+    if (customers.length > 0) {
+        console.log('=== RAW SHOPIFY CUSTOMER DATA (First Customer) ===');
+        console.log(JSON.stringify(customers[0], null, 2));
+        console.log('=== END RAW DATA ===');
+    }
+
+    return customers.map((customer, index) => {
+        // Log every customer's raw structure for first 3 customers
+        if (index < 3) {
+            console.log(`Customer ${index + 1} raw keys:`, Object.keys(customer));
+            console.log(`Customer ${index + 1} sample:`, {
+                id: customer.id,
+                email: customer.email,
+                first_name: customer.first_name,
+                last_name: customer.last_name,
+                firstName: customer.firstName,
+                lastName: customer.lastName,
+                total_spent: customer.total_spent,
+                totalSpent: customer.totalSpent,
+            });
+        }
+
+        // Handle null/undefined values and ensure we get the data
+        // Try multiple possible field names
+        const email = customer.email || customer.Email || null;
+        const firstName = customer.first_name || customer.firstName || customer.firstName || null;
+        const lastName = customer.last_name || customer.lastName || customer.lastName || null;
+        const totalSpent = parseFloat(customer.total_spent || customer.totalSpent || '0') || 0;
+
+        // Log if customer has missing critical data
+        if (!email && !firstName && !lastName) {
+            console.warn(`Customer ${index + 1} (ID: ${customer.id}) has missing data:`, {
+                allKeys: Object.keys(customer),
+                email,
+                first_name: customer.first_name,
+                last_name: customer.last_name,
+                firstName: customer.firstName,
+                lastName: customer.lastName,
+            });
+        }
+
+        const mappedCustomer = {
+            shopifyId: String(customer.id),
+            email,
+            firstName,
+            lastName,
+            totalSpent,
+        };
+
+        // Log the mapped result for first customer
+        if (index === 0) {
+            console.log('=== MAPPED CUSTOMER DATA ===');
+            console.log(JSON.stringify(mappedCustomer, null, 2));
+            console.log('=== END MAPPED DATA ===');
+        }
+
+        return mappedCustomer;
+    });
 }
 
 /**

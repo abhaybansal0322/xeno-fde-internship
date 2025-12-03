@@ -1,36 +1,77 @@
 import { useState, useEffect } from 'react';
 import { getCustomersList, getOrdersList } from '../lib/api';
 
-export default function DataListModal({ isOpen, onClose, type, tenantId }) {
+export default function DataListModal({ isOpen, onClose, type, tenantId, customersData, ordersData }) {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        if (isOpen && tenantId) {
+        if (isOpen && tenantId && type) {
+            // If data is passed as props, use it directly (no need to fetch)
+            if (type === 'customers' && customersData) {
+                setData(Array.isArray(customersData) ? customersData : []);
+                setLoading(false);
+                setError(null);
+                return;
+            }
+            
+            if (type === 'orders' && ordersData) {
+                setData(Array.isArray(ordersData) ? ordersData : []);
+                setLoading(false);
+                setError(null);
+                return;
+            }
+
+            // Otherwise, fetch data from API
             setLoading(true);
             setError(null);
+            setData([]);
             
             const fetchData = async () => {
                 try {
                     let result;
                     if (type === 'customers') {
                         result = await getCustomersList(tenantId);
-                        setData(result.customers || []);
+                        // Handle both response formats: {customers: [...]} or just [...]
+                        if (Array.isArray(result)) {
+                            setData(result);
+                        } else if (result?.customers) {
+                            setData(result.customers);
+                        } else {
+                            setData([]);
+                        }
                     } else if (type === 'orders') {
                         result = await getOrdersList(tenantId);
-                        setData(result.orders || []);
+                        // Handle both response formats: {orders: [...]} or just [...]
+                        if (Array.isArray(result)) {
+                            setData(result);
+                        } else if (result?.orders) {
+                            setData(result.orders);
+                        } else {
+                            setData([]);
+                        }
                     }
                 } catch (err) {
-                    setError(err.response?.data?.error || 'Failed to load data');
+                    console.error('Error fetching data:', err);
+                    const errorMessage = err.response?.data?.error || 
+                                       err.response?.data?.message || 
+                                       err.message || 
+                                       'Failed to load data';
+                    setError(errorMessage);
                 } finally {
                     setLoading(false);
                 }
             };
 
             fetchData();
+        } else if (!isOpen) {
+            // Reset when modal closes
+            setData([]);
+            setError(null);
+            setLoading(true);
         }
-    }, [isOpen, type, tenantId]);
+    }, [isOpen, type, tenantId, customersData, ordersData]);
 
     if (!isOpen) return null;
 
@@ -89,7 +130,7 @@ export default function DataListModal({ isOpen, onClose, type, tenantId }) {
                                                         {customer.email}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 text-right font-bold">
-                                                        ${customer.totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        ${(customer.totalSpent || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </td>
                                                 </tr>
                                             ))}
@@ -118,7 +159,7 @@ export default function DataListModal({ isOpen, onClose, type, tenantId }) {
                                                         {new Date(order.orderDate).toLocaleDateString()}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 text-right font-bold">
-                                                        ${order.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        ${(order.totalPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </td>
                                                 </tr>
                                             ))}

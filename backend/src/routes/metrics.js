@@ -65,43 +65,63 @@ router.get('/', requireUserEmail, async (req, res) => {
             ...(Object.keys(dateFilter).length > 0 && { orderDate: dateFilter }),
         };
 
-        // Get counts
-        const [customersCount, ordersCount, orders] = await Promise.all([
+        // Get counts (optimized - don't fetch all orders if not needed for date grouping)
+        const [customersCount, ordersCount] = await Promise.all([
             prisma.customer.count({ where: { tenantId } }),
             prisma.order.count({ where: orderFilter }),
-            prisma.order.findMany({
+        ]);
+
+        // Only fetch orders if we need date grouping or revenue calculation
+        // For top customers, we don't need all orders - optimize by limiting
+        let orders = [];
+        let totalRevenue = 0;
+        let ordersByDate = [];
+
+        if (start || end) {
+            // If date range is specified, fetch orders for grouping
+            orders = await prisma.order.findMany({
                 where: orderFilter,
                 select: {
                     orderDate: true,
                     totalPrice: true,
                 },
-            }),
-        ]);
+                take: 10000, // Limit to prevent timeout on large datasets
+            });
 
-        // Calculate total revenue
-        const totalRevenue = orders.reduce(
-            (sum, order) => sum + parseFloat(order.totalPrice),
-            0
-        );
+            // Calculate total revenue
+            totalRevenue = orders.reduce(
+                (sum, order) => sum + parseFloat(order.totalPrice || 0),
+                0
+            );
 
-        // Group orders by date
-        const ordersByDateMap = {};
-        orders.forEach(order => {
-            const date = order.orderDate.toISOString().split('T')[0]; // YYYY-MM-DD
-            if (!ordersByDateMap[date]) {
-                ordersByDateMap[date] = { count: 0, revenue: 0 };
-            }
-            ordersByDateMap[date].count++;
-            ordersByDateMap[date].revenue += parseFloat(order.totalPrice);
-        });
+            // Group orders by date
+            const ordersByDateMap = {};
+            orders.forEach(order => {
+                const date = order.orderDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                if (!ordersByDateMap[date]) {
+                    ordersByDateMap[date] = { count: 0, revenue: 0 };
+                }
+                ordersByDateMap[date].count++;
+                ordersByDateMap[date].revenue += parseFloat(order.totalPrice || 0);
+            });
 
-        const ordersByDate = Object.entries(ordersByDateMap).map(([date, data]) => ({
-            date,
-            count: data.count,
-            revenue: data.revenue,
-        })).sort((a, b) => a.date.localeCompare(b.date));
+            ordersByDate = Object.entries(ordersByDateMap).map(([date, data]) => ({
+                date,
+                count: data.count,
+                revenue: data.revenue,
+            })).sort((a, b) => a.date.localeCompare(b.date));
+        } else {
+            // If no date range, calculate revenue efficiently using aggregation
+            const revenueResult = await prisma.order.aggregate({
+                where: { tenantId },
+                _sum: {
+                    totalPrice: true,
+                },
+            });
+            totalRevenue = parseFloat(revenueResult._sum.totalPrice || 0);
+        }
 
-        // Get top 5 customers by total spent
+        // Get top 5 customers by total spent (optimized - separate query)
         const topCustomers = await prisma.customer.findMany({
             where: { tenantId },
             orderBy: { totalSpent: 'desc' },
@@ -180,13 +200,24 @@ router.get('/customers', requireUserEmail, async (req, res) => {
             orderBy: { totalSpent: 'desc' },
         });
 
-        const formattedCustomers = customers.map(customer => ({
-            id: customer.id,
-            name: `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'N/A',
-            email: customer.email || 'N/A',
-            totalSpent: parseFloat(customer.totalSpent),
-            createdAt: customer.createdAt,
-        }));
+        const formattedCustomers = customers.map(customer => {
+            // Build name from firstName and lastName, or use email, or fallback
+            let name = 'N/A';
+            if (customer.firstName || customer.lastName) {
+                name = `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+            } else if (customer.email) {
+                // Use email as name if no first/last name
+                name = customer.email.split('@')[0];
+            }
+
+            return {
+                id: customer.id,
+                name,
+                email: customer.email || 'N/A',
+                totalSpent: parseFloat(customer.totalSpent || 0) || 0,
+                createdAt: customer.createdAt,
+            };
+        });
 
         res.json({
             tenantId,
@@ -197,6 +228,62 @@ router.get('/customers', requireUserEmail, async (req, res) => {
         console.error('Error fetching customers:', error);
         res.status(500).json({
             error: 'Failed to fetch customers',
+            message: error.message,
+        });
+    }
+});
+
+/**
+ * GET /api/metrics/top-customers?tenantId=<id>
+ * Get top 5 customers for a tenant (lightweight endpoint)
+ * Requires X-User-Email header
+ */
+router.get('/top-customers', requireUserEmail, async (req, res) => {
+    try {
+        const { tenantId } = req.query;
+        const userEmail = req.userEmail;
+
+        if (!tenantId) {
+            return res.status(400).json({
+                error: 'Missing required query parameter: tenantId',
+            });
+        }
+
+        // Verify tenant access
+        const accessCheck = await verifyTenantAccess(tenantId, userEmail);
+        if (!accessCheck.valid) {
+            return res.status(403).json({
+                error: accessCheck.error,
+            });
+        }
+
+        // Get top 5 customers by total spent (optimized query)
+        const topCustomers = await prisma.customer.findMany({
+            where: { tenantId },
+            orderBy: { totalSpent: 'desc' },
+            take: 5,
+            select: {
+                firstName: true,
+                lastName: true,
+                email: true,
+                totalSpent: true,
+            },
+        });
+
+        const topCustomersFormatted = topCustomers.map(customer => ({
+            name: `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'N/A',
+            email: customer.email || 'N/A',
+            totalSpent: parseFloat(customer.totalSpent) || 0,
+        }));
+
+        res.json({
+            tenantId,
+            topCustomers: topCustomersFormatted,
+        });
+    } catch (error) {
+        console.error('Error fetching top customers:', error);
+        res.status(500).json({
+            error: 'Failed to fetch top customers',
             message: error.message,
         });
     }
