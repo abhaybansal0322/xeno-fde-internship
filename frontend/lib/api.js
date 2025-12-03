@@ -20,26 +20,28 @@ let currentUserEmail = null;
 
 export const setUserEmail = (email) => {
     currentUserEmail = email;
+    console.log('[API] User email set:', email);
 };
 
-// Add interceptor to include user email in headers
+// Export API URL for error messages
+export const getApiUrl = () => {
+    return API_URL;
+};
+
+// Add interceptor to include user email in headers and debug logging
 api.interceptors.request.use(
     (config) => {
         // Add user email to headers if available
         if (currentUserEmail) {
             config.headers['X-User-Email'] = currentUserEmail;
+        } else {
+            console.warn('[API] No user email set - request may fail authentication');
         }
-        return config;
-    },
-    (error) => {
-        return Promise.reject(error);
-    }
-);
-
-// Add request interceptor for debugging
-api.interceptors.request.use(
-    (config) => {
-        console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+        // Debug logging
+        console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, {
+            hasUserEmail: !!currentUserEmail,
+            userEmail: currentUserEmail || 'not set'
+        });
         return config;
     },
     (error) => {

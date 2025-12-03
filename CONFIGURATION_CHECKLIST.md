@@ -18,34 +18,48 @@ DATABASE_URL="postgresql://xenouser:xenopass@localhost:5432/xenodb"
   - **Production**: Get from your database provider (AWS RDS, Heroku Postgres, Railway, etc.)
 - **Format**: `postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public`
 
-#### 2. **Shopify API Credentials**
+#### 2. **Shopify API Credentials (OAuth Flow)**
 ```env
-SHOPIFY_API_KEY=your_api_key_here
-SHOPIFY_API_SECRET=your_api_secret_here
-SHOPIFY_WEBHOOK_SECRET=your_webhook_secret_here
+SHOPIFY_API_KEY=your_client_id_here
+SHOPIFY_API_SECRET=your_client_secret_here
+SHOPIFY_API_VERSION=2024-01
 ```
-- **What they are**: Credentials for Shopify Partner App
+- **What they are**: Credentials for Shopify Partner App (OAuth flow)
 - **Where to get them**:
   1. Go to [Shopify Partner Dashboard](https://partners.shopify.com/)
   2. Create a new app or select existing app
-  3. Navigate to **App Setup** → **API credentials**
+  3. Navigate to **API credentials** tab
   4. Copy:
-     - **API Key** → `SHOPIFY_API_KEY`
-     - **API Secret Key** → `SHOPIFY_API_SECRET`
-     - **Client Secret** (for webhooks) → `SHOPIFY_WEBHOOK_SECRET`
-- **Note**: These are app-level credentials, not store-specific
+     - **Client ID** → `SHOPIFY_API_KEY`
+     - **Client secret** → `SHOPIFY_API_SECRET`
+  5. Set **API version** (optional, defaults to 2024-01) → `SHOPIFY_API_VERSION`
+- **Note**: 
+  - These are app-level credentials for OAuth flow
+  - Required for OAuth-based store connection
+  - See `SHOPIFY_OAUTH_SETUP.md` for detailed setup
+
+#### 2b. **Shopify Webhook Secret (Optional)**
+```env
+SHOPIFY_WEBHOOK_SECRET=your_webhook_secret_here
+```
+- **What it is**: Secret for verifying webhook signatures
+- **When needed**: If using Shopify Partner App webhooks
+- **Where to get**: From Shopify Partner Dashboard → App → Webhooks
 
 #### 3. **Server Configuration**
 ```env
-PORT=3000
+PORT=4000
 NODE_ENV=development
 ENABLE_CRON=false
-API_BASE_URL=http://localhost:3000
+API_BASE_URL=http://localhost:4000
 ```
-- **PORT**: Backend server port (default: 3000)
+- **PORT**: Backend server port (default: 4000)
 - **NODE_ENV**: `development` or `production`
 - **ENABLE_CRON**: Set to `true` to enable automated tenant sync (runs every 10 minutes)
-- **API_BASE_URL**: Base URL for cron jobs to call API endpoints (for production, use your domain)
+- **API_BASE_URL**: 
+  - Base URL for OAuth callbacks and cron jobs
+  - **Local**: `http://localhost:4000`
+  - **Production**: `https://your-backend-domain.com`
 
 ---
 

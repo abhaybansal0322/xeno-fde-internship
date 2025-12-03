@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { onboardTenant } from '../lib/api';
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { onboardTenant, setUserEmail, getApiUrl } from '../lib/api';
 import { useRouter } from 'next/router';
 
 export default function OnboardTenant({ onSuccess }) {
+    const { data: session } = useSession();
     const [formData, setFormData] = useState({
         name: '',
         shopifyDomain: '',
@@ -12,10 +14,28 @@ export default function OnboardTenant({ onSuccess }) {
     const [error, setError] = useState('');
     const router = useRouter();
 
+    // Ensure user email is set before form submission
+    useEffect(() => {
+        if (session?.user?.email) {
+            setUserEmail(session.user.email);
+        }
+    }, [session]);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         setError('');
+
+        // Validate user is authenticated
+        if (!session?.user?.email) {
+            setError('Please sign in to connect a store. Redirecting to login...');
+            setLoading(false);
+            setTimeout(() => router.push('/auth/signin'), 2000);
+            return;
+        }
+
+        // Ensure user email is set
+        setUserEmail(session.user.email);
 
         // Validate shopifyDomain format
         if (!formData.shopifyDomain.includes('.myshopify.com')) {
@@ -41,8 +61,22 @@ export default function OnboardTenant({ onSuccess }) {
                 router.reload();
             }
         } catch (err) {
-            const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to onboard tenant';
-            setError(errorMessage);
+            console.error('Onboard tenant error:', err);
+            
+            // Handle network errors specifically
+            if (err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED') {
+                const apiUrl = getApiUrl();
+                setError(`Cannot connect to server at ${apiUrl}. Please check if the backend is running. If you're in production, verify your NEXT_PUBLIC_API_URL environment variable is set correctly.`);
+            } else if (err.response) {
+                // Server responded with error
+                const errorMessage = err.response?.data?.error || err.response?.data?.message || 'Failed to onboard tenant';
+                setError(errorMessage);
+            } else if (err.message) {
+                // Other errors
+                setError(err.message);
+            } else {
+                setError('Failed to onboard tenant. Please try again.');
+            }
         } finally {
             setLoading(false);
         }

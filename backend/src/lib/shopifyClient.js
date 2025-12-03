@@ -1,5 +1,8 @@
 // Shopify REST Admin API client wrapper
+// Based on Shopify App Template best practices
 const axios = require('axios');
+
+const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION || '2024-01';
 
 /**
  * Helper to fetch all pages of a resource using cursor-based pagination
@@ -88,7 +91,7 @@ async function fetchAllResources(initialUrl, accessToken, resourceKey) {
  * @returns {Promise<Array>} - Array of customer objects
  */
 async function fetchCustomers(shopifyDomain, accessToken) {
-    const url = `https://${shopifyDomain}/admin/api/2024-01/customers.json?limit=250`;
+    const url = `https://${shopifyDomain}/admin/api/${SHOPIFY_API_VERSION}/customers.json?limit=250`;
 
     const customers = await fetchAllResources(url, accessToken, 'customers');
 
@@ -108,7 +111,7 @@ async function fetchCustomers(shopifyDomain, accessToken) {
  * @returns {Promise<Array>} - Array of product objects
  */
 async function fetchProducts(shopifyDomain, accessToken) {
-    const url = `https://${shopifyDomain}/admin/api/2024-01/products.json?limit=250`;
+    const url = `https://${shopifyDomain}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=250`;
 
     const products = await fetchAllResources(url, accessToken, 'products');
 
@@ -129,7 +132,7 @@ async function fetchProducts(shopifyDomain, accessToken) {
  * @returns {Promise<Array>} - Array of order objects
  */
 async function fetchOrders(shopifyDomain, accessToken) {
-    const url = `https://${shopifyDomain}/admin/api/2024-01/orders.json?status=any&limit=250`;
+    const url = `https://${shopifyDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&limit=250`;
 
     const orders = await fetchAllResources(url, accessToken, 'orders');
 
