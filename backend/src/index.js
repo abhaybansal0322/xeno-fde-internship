@@ -36,6 +36,8 @@ app.use(cors({
         const allowedOrigins = [
             process.env.FRONTEND_URL,
             process.env.NEXTAUTH_URL, // Also check NextAuth URL
+            // Deployed frontend on Vercel
+            'https://xeno-frontend-teal.vercel.app',
             'http://localhost:3000',
             'http://localhost:3001',
         ].filter(Boolean).map(normalizeUrl);
