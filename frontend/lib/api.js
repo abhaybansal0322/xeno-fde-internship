@@ -154,6 +154,34 @@ export const loginUser = async (email, password) => {
 };
 
 // Tenant management functions
+/**
+ * Validate Shopify credentials before onboarding
+ * This calls the backend which makes a test API call to Shopify
+ * @param {string} shopifyDomain - Shopify store domain
+ * @param {string} accessToken - Admin API access token
+ * @returns {Promise<object>} - Validation result with shop info if valid
+ */
+export const validateShopifyCredentials = async (shopifyDomain, accessToken) => {
+    try {
+        const response = await api.post('/api/tenants/validate', {
+            shopifyDomain,
+            accessToken,
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error validating Shopify credentials:', error);
+        throw error;
+    }
+};
+
+/**
+ * Onboard a new tenant (Shopify store)
+ * All Shopify API calls are handled by the backend to avoid CORS issues
+ * @param {string} name - Store name
+ * @param {string} shopifyDomain - Shopify store domain
+ * @param {string} accessToken - Admin API access token
+ * @returns {Promise<object>} - Created tenant data
+ */
 export const onboardTenant = async (name, shopifyDomain, accessToken) => {
     try {
         const response = await api.post('/api/tenants/onboard', {

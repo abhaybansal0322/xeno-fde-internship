@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { onboardTenant, setUserEmail, getApiUrl } from '../lib/api';
+import { onboardTenant, validateShopifyCredentials, setUserEmail, getApiUrl } from '../lib/api';
 import { useRouter } from 'next/router';
 
 export default function OnboardTenant({ onSuccess }) {
@@ -45,6 +45,39 @@ export default function OnboardTenant({ onSuccess }) {
         }
 
         try {
+            // First validate credentials through backend (backend makes Shopify API call)
+            // This ensures we catch CORS/auth errors before attempting to create tenant
+            try {
+                const validationResult = await validateShopifyCredentials(
+                    formData.shopifyDomain,
+                    formData.accessToken
+                );
+                
+                if (!validationResult.valid) {
+                    setError(validationResult.message || 'Invalid Shopify credentials');
+                    setLoading(false);
+                    return;
+                }
+                
+                // Optionally use shop name from validation if name is empty
+                if (!formData.name && validationResult.shop?.name) {
+                    formData.name = validationResult.shop.name;
+                }
+            } catch (validationError) {
+                // Handle validation errors (invalid token, CORS, etc.)
+                if (validationError.response) {
+                    const errorMessage = validationError.response?.data?.message || 
+                                       validationError.response?.data?.error || 
+                                       'Failed to validate Shopify credentials';
+                    setError(errorMessage);
+                } else {
+                    setError('Could not connect to Shopify. Please check your credentials and try again.');
+                }
+                setLoading(false);
+                return;
+            }
+
+            // If validation passes, create tenant (backend handles all Shopify API calls)
             const result = await onboardTenant(
                 formData.name,
                 formData.shopifyDomain,
