@@ -84,7 +84,7 @@ async function fetchCustomersGraphQL(shopDomain, accessToken, limit = 250) {
                             email
                             firstName
                             lastName
-                            totalSpent {
+                            totalSpentV2 {
                                 amount
                                 currencyCode
                             }
@@ -111,10 +111,10 @@ async function fetchCustomersGraphQL(shopDomain, accessToken, limit = 250) {
                 const customer = edge.node;
                 customers.push({
                     shopifyId: customer.id.replace('gid://shopify/Customer/', ''),
-                    email: customer.email,
-                    firstName: customer.firstName,
-                    lastName: customer.lastName,
-                    totalSpent: parseFloat(customer.totalSpent?.amount || '0') || 0,
+                    email: customer.email || null,
+                    firstName: customer.firstName || null,
+                    lastName: customer.lastName || null,
+                    totalSpent: parseFloat(customer.totalSpentV2?.amount || '0') || 0,
                 });
             }
 

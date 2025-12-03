@@ -91,9 +91,44 @@ async function fetchAllResources(initialUrl, accessToken, resourceKey) {
  * @returns {Promise<Array>} - Array of customer objects
  */
 async function fetchCustomers(shopifyDomain, accessToken) {
+    // Fetch all customers - don't use fields parameter to get all available data
     const url = `https://${shopifyDomain}/admin/api/${SHOPIFY_API_VERSION}/customers.json?limit=250`;
 
     const customers = await fetchAllResources(url, accessToken, 'customers');
+    
+    // If customers are missing email/name, try fetching individual customer details
+    const customersNeedingDetails = customers.filter(c => !c.email && !c.first_name && !c.last_name);
+    
+    if (customersNeedingDetails.length > 0) {
+        console.log(`Fetching detailed info for ${customersNeedingDetails.length} customers missing email/name...`);
+        
+        // Fetch individual customer details in parallel (limit to 10 at a time to avoid rate limits)
+        const detailPromises = customersNeedingDetails.slice(0, 10).map(async (customer) => {
+            try {
+                const detailUrl = `https://${shopifyDomain}/admin/api/${SHOPIFY_API_VERSION}/customers/${customer.id}.json`;
+                const response = await axios.get(detailUrl, {
+                    headers: {
+                        'X-Shopify-Access-Token': accessToken,
+                        'Content-Type': 'application/json',
+                    },
+                });
+                return response.data.customer;
+            } catch (error) {
+                console.warn(`Failed to fetch details for customer ${customer.id}:`, error.message);
+                return customer; // Return original if fetch fails
+            }
+        });
+        
+        const detailedCustomers = await Promise.all(detailPromises);
+        
+        // Merge detailed data back into customers array
+        detailedCustomers.forEach((detailed, idx) => {
+            const originalIdx = customers.findIndex(c => c.id === customersNeedingDetails[idx].id);
+            if (originalIdx !== -1 && detailed) {
+                customers[originalIdx] = { ...customers[originalIdx], ...detailed };
+            }
+        });
+    }
 
     // Log first customer's raw data to see what Shopify is actually returning
     if (customers.length > 0) {
@@ -103,26 +138,33 @@ async function fetchCustomers(shopifyDomain, accessToken) {
     }
 
     return customers.map((customer, index) => {
-        // Log every customer's raw structure for first 3 customers
-        if (index < 3) {
-            console.log(`Customer ${index + 1} raw keys:`, Object.keys(customer));
-            console.log(`Customer ${index + 1} sample:`, {
-                id: customer.id,
-                email: customer.email,
-                first_name: customer.first_name,
-                last_name: customer.last_name,
-                firstName: customer.firstName,
-                lastName: customer.lastName,
-                total_spent: customer.total_spent,
-                totalSpent: customer.totalSpent,
-            });
+        // Extract email - check top level first, then default_address
+        let email = customer.email || null;
+        if (!email && customer.default_address?.email) {
+            email = customer.default_address.email;
         }
 
-        // Handle null/undefined values and ensure we get the data
-        // Try multiple possible field names
-        const email = customer.email || customer.Email || null;
-        const firstName = customer.first_name || customer.firstName || customer.firstName || null;
-        const lastName = customer.last_name || customer.lastName || customer.lastName || null;
+        // Extract first_name and last_name - check multiple locations
+        let firstName = customer.first_name || customer.firstName || null;
+        let lastName = customer.last_name || customer.lastName || null;
+        
+        // If not found at top level, check default_address
+        if (!firstName && customer.default_address?.first_name) {
+            firstName = customer.default_address.first_name;
+        }
+        if (!lastName && customer.default_address?.last_name) {
+            lastName = customer.default_address.last_name;
+        }
+        
+        // If still not found, check addresses array
+        if (!firstName && !lastName && customer.addresses && customer.addresses.length > 0) {
+            const defaultAddr = customer.addresses.find(addr => addr.default) || customer.addresses[0];
+            if (defaultAddr) {
+                firstName = defaultAddr.first_name || firstName;
+                lastName = defaultAddr.last_name || lastName;
+            }
+        }
+
         const totalSpent = parseFloat(customer.total_spent || customer.totalSpent || '0') || 0;
 
         // Log if customer has missing critical data

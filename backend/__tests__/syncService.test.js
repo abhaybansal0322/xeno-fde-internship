@@ -5,9 +5,12 @@ const { upsertOrders } = require('../src/lib/syncService');
 jest.mock('../src/prisma', () => ({
     customer: {
         findUnique: jest.fn(),
+        findMany: jest.fn(),
     },
     order: {
         upsert: jest.fn(),
+        createMany: jest.fn(),
+        updateMany: jest.fn(),
     },
 }));
 
@@ -22,17 +25,17 @@ describe('SyncService - upsertOrders', () => {
     });
 
     test('should upsert orders with idempotency', async () => {
-        // Mock customer lookup
-        prisma.customer.findUnique.mockResolvedValue({
-            id: mockCustomerId,
-            shopifyId: '9876543210',
-        });
+        // Mock customer lookup (using findMany for batch lookup)
+        prisma.customer.findMany.mockResolvedValue([
+            {
+                id: mockCustomerId,
+                shopifyId: '9876543210',
+            },
+        ]);
 
-        // Mock upsert
-        prisma.order.upsert.mockResolvedValue({
-            id: 'order-uuid',
-            shopifyId: '1234567890',
-        });
+        // Mock batch operations
+        prisma.order.createMany.mockResolvedValue({ count: 1 });
+        prisma.order.updateMany.mockResolvedValue({ count: 1 });
 
         const orders = [
             {
@@ -47,41 +50,35 @@ describe('SyncService - upsertOrders', () => {
         const count = await upsertOrders(mockTenantId, orders);
 
         expect(count).toBe(1);
-        expect(prisma.customer.findUnique).toHaveBeenCalledWith({
+        expect(prisma.customer.findMany).toHaveBeenCalledWith({
             where: {
-                tenantId_shopifyId: {
-                    tenantId: mockTenantId,
-                    shopifyId: '9876543210',
-                },
+                tenantId: mockTenantId,
+                shopifyId: { in: ['9876543210'] },
+            },
+            select: {
+                id: true,
+                shopifyId: true,
             },
         });
-        expect(prisma.order.upsert).toHaveBeenCalledWith({
-            where: {
-                tenantId_shopifyId: {
+        expect(prisma.order.createMany).toHaveBeenCalledWith({
+            data: expect.arrayContaining([
+                expect.objectContaining({
                     tenantId: mockTenantId,
                     shopifyId: '1234567890',
-                },
-            },
-            update: expect.objectContaining({
-                customerId: mockCustomerId,
-                orderNumber: '1001',
-                totalPrice: 99.99,
-            }),
-            create: expect.objectContaining({
-                tenantId: mockTenantId,
-                shopifyId: '1234567890',
-                customerId: mockCustomerId,
-                orderNumber: '1001',
-                totalPrice: 99.99,
-            }),
+                    customerId: mockCustomerId,
+                    orderNumber: '1001',
+                    totalPrice: 99.99,
+                }),
+            ]),
+            skipDuplicates: true,
         });
+        expect(prisma.order.updateMany).toHaveBeenCalled();
     });
 
     test('should handle orders without customer (guest checkout)', async () => {
-        prisma.order.upsert.mockResolvedValue({
-            id: 'order-uuid-2',
-            shopifyId: '1111111111',
-        });
+        // Mock batch operations
+        prisma.order.createMany.mockResolvedValue({ count: 1 });
+        prisma.order.updateMany.mockResolvedValue({ count: 1 });
 
         const orders = [
             {
@@ -96,29 +93,28 @@ describe('SyncService - upsertOrders', () => {
         const count = await upsertOrders(mockTenantId, orders);
 
         expect(count).toBe(1);
-        expect(prisma.customer.findUnique).not.toHaveBeenCalled();
-        expect(prisma.order.upsert).toHaveBeenCalledWith({
-            where: {
-                tenantId_shopifyId: {
+        expect(prisma.customer.findMany).not.toHaveBeenCalled();
+        expect(prisma.order.createMany).toHaveBeenCalledWith({
+            data: expect.arrayContaining([
+                expect.objectContaining({
                     tenantId: mockTenantId,
                     shopifyId: '1111111111',
-                },
-            },
-            update: expect.objectContaining({
-                customerId: null,
-                orderNumber: '1002',
-            }),
-            create: expect.objectContaining({
-                customerId: null,
-                orderNumber: '1002',
-            }),
+                    customerId: null,
+                    orderNumber: '1002',
+                    totalPrice: 49.99,
+                }),
+            ]),
+            skipDuplicates: true,
         });
+        expect(prisma.order.updateMany).toHaveBeenCalled();
     });
 
     test('should handle multiple orders in sequence', async () => {
-        prisma.order.upsert
-            .mockResolvedValueOnce({ id: 'order-1' })
-            .mockResolvedValueOnce({ id: 'order-2' });
+        // Mock batch operations for multiple orders
+        prisma.order.createMany.mockResolvedValue({ count: 2 });
+        prisma.order.updateMany
+            .mockResolvedValueOnce({ count: 1 })
+            .mockResolvedValueOnce({ count: 1 });
 
         const orders = [
             {
@@ -140,6 +136,7 @@ describe('SyncService - upsertOrders', () => {
         const count = await upsertOrders(mockTenantId, orders);
 
         expect(count).toBe(2);
-        expect(prisma.order.upsert).toHaveBeenCalledTimes(2);
+        expect(prisma.order.createMany).toHaveBeenCalledTimes(1); // Batch operation
+        expect(prisma.order.updateMany).toHaveBeenCalledTimes(2); // One update per order
     });
 });
