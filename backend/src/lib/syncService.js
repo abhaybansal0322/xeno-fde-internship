@@ -1,7 +1,7 @@
 // Sync service with idempotent upsert logic
 const prisma = require('../prisma');
 const { fetchCustomers, fetchProducts, fetchOrders } = require('./shopifyClient');
-const { fetchCustomersGraphQL } = require('./shopifyGraphQL');
+const { fetchCustomersGraphQL, fetchOrdersGraphQL } = require('./shopifyGraphQL');
 
 /**
  * Upsert customers for a tenant (idempotent)
@@ -19,24 +19,18 @@ async function upsertCustomers(tenantId, customers) {
 
     for (let i = 0; i < customers.length; i += BATCH_SIZE) {
         const batch = customers.slice(i, i + BATCH_SIZE);
-        
+
         // Use createMany with skipDuplicates for better performance
         // First, try to create new records
-        const batchData = batch.map(customer => {
-            // Log for debugging
-            if (!customer.email && !customer.firstName && !customer.lastName) {
-                console.warn('Customer with missing data:', customer);
-            }
-            return {
-                tenantId,
-                shopifyId: customer.shopifyId,
-                email: customer.email || null,
-                firstName: customer.firstName || null,
-                lastName: customer.lastName || null,
-                totalSpent: customer.totalSpent || 0,
-            };
-        });
-        
+        const batchData = batch.map(customer => ({
+            tenantId,
+            shopifyId: customer.shopifyId,
+            email: customer.email || null,
+            firstName: customer.firstName || null,
+            lastName: customer.lastName || null,
+            totalSpent: customer.totalSpent || 0,
+        }));
+
         await prisma.customer.createMany({
             data: batchData,
             skipDuplicates: true,
@@ -82,7 +76,7 @@ async function upsertProducts(tenantId, products) {
 
     for (let i = 0; i < products.length; i += BATCH_SIZE) {
         const batch = products.slice(i, i + BATCH_SIZE);
-        
+
         // Use createMany with skipDuplicates for better performance
         await prisma.product.createMany({
             data: batch.map(product => ({
@@ -134,7 +128,7 @@ async function upsertOrders(tenantId, orders) {
     // First, get all customer IDs in a single query for better performance
     const customerShopifyIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
     const customersMap = new Map();
-    
+
     if (customerShopifyIds.length > 0) {
         const customers = await prisma.customer.findMany({
             where: {
@@ -146,17 +140,17 @@ async function upsertOrders(tenantId, orders) {
                 shopifyId: true,
             },
         });
-        
+
         customers.forEach(c => customersMap.set(c.shopifyId, c.id));
     }
 
     // Process in batches
-    const BATCH_SIZE = 100;
+    const BATCH_SIZE = 50; // Reduced batch size due to line items
     let count = 0;
 
     for (let i = 0; i < orders.length; i += BATCH_SIZE) {
         const batch = orders.slice(i, i + BATCH_SIZE);
-        
+
         // Prepare batch data with customer IDs
         const batchData = batch.map(order => ({
             tenantId,
@@ -167,7 +161,7 @@ async function upsertOrders(tenantId, orders) {
             orderDate: order.orderDate,
         }));
 
-        // Use createMany with skipDuplicates
+        // 1. Upsert Orders
         await prisma.order.createMany({
             data: batchData,
             skipDuplicates: true,
@@ -192,6 +186,51 @@ async function upsertOrders(tenantId, orders) {
             })
         );
 
+        // 2. Handle Line Items
+        // Fetch the internal IDs of the orders we just upserted
+        const shopifyIds = batch.map(o => o.shopifyId);
+        const savedOrders = await prisma.order.findMany({
+            where: {
+                tenantId,
+                shopifyId: { in: shopifyIds },
+            },
+            select: { id: true, shopifyId: true },
+        });
+
+        const orderIdMap = new Map(savedOrders.map(o => [o.shopifyId, o.id]));
+
+        // Prepare line items
+        const lineItemsData = [];
+        for (const order of batch) {
+            const orderId = orderIdMap.get(order.shopifyId);
+            if (orderId && order.lineItems && Array.isArray(order.lineItems)) {
+                for (const item of order.lineItems) {
+                    lineItemsData.push({
+                        orderId,
+                        shopifyId: item.shopifyId,
+                        title: item.title,
+                        quantity: item.quantity,
+                        price: item.price,
+                    });
+                }
+            }
+        }
+
+        if (lineItemsData.length > 0) {
+            // Delete existing line items for these orders to avoid duplicates/stale data
+            // (Simpler than upserting individual line items)
+            await prisma.orderLineItem.deleteMany({
+                where: {
+                    orderId: { in: Array.from(orderIdMap.values()) },
+                },
+            });
+
+            // Insert new line items
+            await prisma.orderLineItem.createMany({
+                data: lineItemsData,
+            });
+        }
+
         count += batch.length;
     }
 
@@ -214,45 +253,35 @@ async function syncAll(tenantId) {
         throw new Error('Tenant not found');
     }
 
-    // Fetch all data from Shopify
-    console.log(`Starting sync for tenant: ${tenant.name}`);
-    console.log(`Using Shopify domain: ${tenant.shopifyDomain}`);
-
-    // Try GraphQL first (more reliable), fallback to REST
+    // Use GraphQL API first for better performance (avoids N+1 problem)
+    // Fallback to REST API if GraphQL fails
     let customers;
     try {
-        console.log('Attempting to fetch customers via GraphQL...');
         customers = await fetchCustomersGraphQL(tenant.shopifyDomain, tenant.accessToken);
-        console.log(`✓ Fetched ${customers.length} customers via GraphQL`);
     } catch (graphqlError) {
-        console.warn('GraphQL fetch failed, falling back to REST API:', graphqlError.message);
-        console.log('Attempting to fetch customers via REST API...');
-        customers = await fetchCustomers(tenant.shopifyDomain, tenant.accessToken);
-        console.log(`✓ Fetched ${customers.length} customers via REST API`);
+        console.warn(`GraphQL fetch failed, falling back to REST: ${graphqlError.message}`);
+        try {
+            customers = await fetchCustomers(tenant.shopifyDomain, tenant.accessToken);
+        } catch (restError) {
+            throw new Error(`Failed to fetch customers: ${restError.message} (GraphQL error: ${graphqlError.message})`);
+        }
     }
 
-    const [products, orders] = await Promise.all([
-        fetchProducts(tenant.shopifyDomain, tenant.accessToken),
-        fetchOrders(tenant.shopifyDomain, tenant.accessToken),
-    ]);
-
-    console.log(`Fetched ${customers.length} customers, ${products.length} products, ${orders.length} orders`);
-    
-    // Log sample customer data to debug
-    if (customers.length > 0) {
-        console.log('=== SAMPLE CUSTOMER DATA AFTER FETCH ===');
-        console.log(JSON.stringify(customers[0], null, 2));
-        console.log('=== END SAMPLE DATA ===');
-    } else {
-        console.warn('⚠️ No customers fetched!');
+    // Use GraphQL for orders to get line items efficiently
+    let orders;
+    try {
+        orders = await fetchOrdersGraphQL(tenant.shopifyDomain, tenant.accessToken);
+    } catch (e) {
+        console.warn('GraphQL orders fetch failed, falling back to REST', e);
+        orders = await fetchOrders(tenant.shopifyDomain, tenant.accessToken);
     }
+
+    const products = await fetchProducts(tenant.shopifyDomain, tenant.accessToken);
 
     // Upsert in order: customers first (for order-customer linking)
     const customersUpserted = await upsertCustomers(tenantId, customers);
     const productsUpserted = await upsertProducts(tenantId, products);
     const ordersUpserted = await upsertOrders(tenantId, orders);
-
-    console.log(`Sync complete: ${customersUpserted} customers, ${productsUpserted} products, ${ordersUpserted} orders`);
 
     return {
         customersUpserted,

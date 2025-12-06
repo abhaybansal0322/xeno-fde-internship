@@ -4,6 +4,118 @@ const axios = require('axios');
 
 const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION || '2024-01';
 
+async function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function requestWithRetry(url, options, retries = 3) {
+    try {
+        return await axios.get(url, options);
+    } catch (error) {
+        if (error.response && error.response.status === 429 && retries > 0) {
+            const retryAfter = error.response.headers['retry-after'];
+            const waitTime = retryAfter ? parseFloat(retryAfter) * 1000 : 2000;
+            console.log(`Rate limited. Waiting ${waitTime}ms...`);
+            await wait(waitTime + 500); // Add a small buffer
+            return requestWithRetry(url, options, retries - 1);
+        }
+        throw error;
+    }
+}
+
+// Extract first/last name with multiple fallbacks
+// Only uses properties that actually exist in the customer object
+function deriveNameParts(customer) {
+    if (!customer || typeof customer !== 'object') {
+        return { firstName: null, lastName: null };
+    }
+
+    let firstName = null;
+    let lastName = null;
+
+    // Check top-level properties only if they exist
+    if ('first_name' in customer && customer.first_name) {
+        firstName = customer.first_name;
+    } else if ('firstName' in customer && customer.firstName) {
+        firstName = customer.firstName;
+    }
+
+    if ('last_name' in customer && customer.last_name) {
+        lastName = customer.last_name;
+    } else if ('lastName' in customer && customer.lastName) {
+        lastName = customer.lastName;
+    }
+
+    // Check default_address only if it exists and has the properties
+    if (!firstName || !lastName) {
+        const defaultAddr = customer.default_address;
+        if (defaultAddr && typeof defaultAddr === 'object') {
+            // Check REST API format (first_name, last_name)
+            if (!firstName && 'first_name' in defaultAddr && defaultAddr.first_name) {
+                firstName = defaultAddr.first_name;
+            }
+            if (!lastName && 'last_name' in defaultAddr && defaultAddr.last_name) {
+                lastName = defaultAddr.last_name;
+            }
+            // Check GraphQL format (firstName, lastName)
+            if (!firstName && 'firstName' in defaultAddr && defaultAddr.firstName) {
+                firstName = defaultAddr.firstName;
+            }
+            if (!lastName && 'lastName' in defaultAddr && defaultAddr.lastName) {
+                lastName = defaultAddr.lastName;
+            }
+        }
+    }
+
+    // Check addresses array only if it exists and is an array
+    if ((!firstName || !lastName) && Array.isArray(customer.addresses) && customer.addresses.length > 0) {
+        const defaultAddr = customer.addresses.find(addr => addr && addr.default === true) || customer.addresses[0];
+        if (defaultAddr && typeof defaultAddr === 'object') {
+            if (!firstName && 'first_name' in defaultAddr && defaultAddr.first_name) {
+                firstName = defaultAddr.first_name;
+            }
+            if (!lastName && 'last_name' in defaultAddr && defaultAddr.last_name) {
+                lastName = defaultAddr.last_name;
+            }
+        }
+    }
+
+    // Display/full name fallback - only if properties exist
+    if (!firstName || !lastName) {
+        let displayName = null;
+        if ('display_name' in customer && customer.display_name) {
+            displayName = customer.display_name;
+        } else if ('name' in customer && customer.name) {
+            displayName = customer.name;
+        } else if (customer.default_address && typeof customer.default_address === 'object' && 'name' in customer.default_address && customer.default_address.name) {
+            displayName = customer.default_address.name;
+        }
+
+        if (displayName && typeof displayName === 'string') {
+            const parts = displayName.trim().split(/\s+/).filter(p => p.length > 0);
+            if (parts.length === 1) {
+                if (!firstName) {
+                    firstName = parts[0];
+                }
+            } else if (parts.length > 1) {
+                const extractedLast = parts[parts.length - 1];
+                const extractedFirst = parts.slice(0, -1).join(' ').trim();
+                if (!firstName && extractedFirst) {
+                    firstName = extractedFirst;
+                }
+                if (!lastName && extractedLast) {
+                    lastName = extractedLast;
+                }
+            }
+        }
+    }
+
+    return {
+        firstName: firstName || null,
+        lastName: lastName || null
+    };
+}
+
 /**
  * Helper to fetch all pages of a resource using cursor-based pagination
  * @param {string} initialUrl - Initial URL to fetch
@@ -17,7 +129,7 @@ async function fetchAllResources(initialUrl, accessToken, resourceKey) {
 
     while (nextUrl) {
         try {
-            const response = await axios.get(nextUrl, {
+            const response = await requestWithRetry(nextUrl, {
                 headers: {
                     'X-Shopify-Access-Token': accessToken,
                     'Content-Type': 'application/json',
@@ -49,7 +161,7 @@ async function fetchAllResources(initialUrl, accessToken, resourceKey) {
                 const status = error.response.status;
                 const statusText = error.response.statusText;
                 const errorData = error.response.data;
-                
+
                 if (status === 401) {
                     console.error(`Shopify API 401 Unauthorized for ${resourceKey}:`, {
                         status,
@@ -91,110 +203,103 @@ async function fetchAllResources(initialUrl, accessToken, resourceKey) {
  * @returns {Promise<Array>} - Array of customer objects
  */
 async function fetchCustomers(shopifyDomain, accessToken) {
-    // Fetch all customers - don't use fields parameter to get all available data
+    // Fetch all customers - get full objects to ensure we have all data
+    // Don't use fields parameter to get complete customer data including nested addresses
     const url = `https://${shopifyDomain}/admin/api/${SHOPIFY_API_VERSION}/customers.json?limit=250`;
 
     const customers = await fetchAllResources(url, accessToken, 'customers');
-    
-    // If customers are missing email/name, try fetching individual customer details
-    const customersNeedingDetails = customers.filter(c => !c.email && !c.first_name && !c.last_name);
-    
-    if (customersNeedingDetails.length > 0) {
-        console.log(`Fetching detailed info for ${customersNeedingDetails.length} customers missing email/name...`);
-        
-        // Fetch individual customer details in parallel (limit to 10 at a time to avoid rate limits)
-        const detailPromises = customersNeedingDetails.slice(0, 10).map(async (customer) => {
+
+    // ALWAYS fetch individual customer details to ensure we get complete data
+    // The list endpoint may not return all fields
+    const BATCH_SIZE = 5; // Reduced from 10 to avoid rate limits
+
+    for (let i = 0; i < customers.length; i += BATCH_SIZE) {
+        const batch = customers.slice(i, i + BATCH_SIZE);
+
+        const detailPromises = batch.map(async (customer) => {
             try {
                 const detailUrl = `https://${shopifyDomain}/admin/api/${SHOPIFY_API_VERSION}/customers/${customer.id}.json`;
-                const response = await axios.get(detailUrl, {
+                const response = await requestWithRetry(detailUrl, {
                     headers: {
                         'X-Shopify-Access-Token': accessToken,
                         'Content-Type': 'application/json',
                     },
                 });
-                return response.data.customer;
+                return { id: customer.id, data: response.data.customer };
             } catch (error) {
-                console.warn(`Failed to fetch details for customer ${customer.id}:`, error.message);
-                return customer; // Return original if fetch fails
+                console.error(`Failed to fetch details for customer ${customer.id}:`, error.message);
+                return { id: customer.id, data: null };
             }
         });
-        
-        const detailedCustomers = await Promise.all(detailPromises);
-        
-        // Merge detailed data back into customers array
-        detailedCustomers.forEach((detailed, idx) => {
-            const originalIdx = customers.findIndex(c => c.id === customersNeedingDetails[idx].id);
-            if (originalIdx !== -1 && detailed) {
-                customers[originalIdx] = { ...customers[originalIdx], ...detailed };
-            }
-        });
-    }
 
-    // Log first customer's raw data to see what Shopify is actually returning
-    if (customers.length > 0) {
-        console.log('=== RAW SHOPIFY CUSTOMER DATA (First Customer) ===');
-        console.log(JSON.stringify(customers[0], null, 2));
-        console.log('=== END RAW DATA ===');
+        const detailedCustomers = await Promise.all(detailPromises);
+
+        // Merge detailed data back into customers array
+        detailedCustomers.forEach(({ id, data }) => {
+            if (data) {
+                const originalIdx = customers.findIndex(c => c.id === id);
+                if (originalIdx !== -1) {
+                    customers[originalIdx] = { ...customers[originalIdx], ...data };
+                }
+            }
+        });
+
+        // Delay between batches to avoid rate limits
+        if (i + BATCH_SIZE < customers.length) {
+            await wait(1000); // Increased from 500ms
+        }
     }
 
     return customers.map((customer, index) => {
-        // Extract email - check top level first, then default_address
-        let email = customer.email || null;
-        if (!email && customer.default_address?.email) {
+        if (!customer || typeof customer !== 'object') {
+            return {
+                shopifyId: null,
+                email: null,
+                firstName: null,
+                lastName: null,
+                totalSpent: 0,
+            };
+        }
+
+        // Log first customer to see what properties are available
+        if (index === 0) {
+            console.log('=== CUSTOMER OBJECT PROPERTIES ===');
+            console.log('All keys:', Object.keys(customer));
+            console.log('Customer object:', JSON.stringify(customer, null, 2));
+            console.log('=== END CUSTOMER OBJECT ===');
+        }
+
+        // Extract email - only use properties that exist
+        let email = null;
+        if ('email' in customer && customer.email) {
+            email = customer.email;
+        } else if (customer.default_address && typeof customer.default_address === 'object' && 'email' in customer.default_address && customer.default_address.email) {
             email = customer.default_address.email;
         }
 
-        // Extract first_name and last_name - check multiple locations
-        let firstName = customer.first_name || customer.firstName || null;
-        let lastName = customer.last_name || customer.lastName || null;
-        
-        // If not found at top level, check default_address
-        if (!firstName && customer.default_address?.first_name) {
-            firstName = customer.default_address.first_name;
-        }
-        if (!lastName && customer.default_address?.last_name) {
-            lastName = customer.default_address.last_name;
-        }
-        
-        // If still not found, check addresses array
-        if (!firstName && !lastName && customer.addresses && customer.addresses.length > 0) {
-            const defaultAddr = customer.addresses.find(addr => addr.default) || customer.addresses[0];
-            if (defaultAddr) {
-                firstName = defaultAddr.first_name || firstName;
-                lastName = defaultAddr.last_name || lastName;
-            }
+        const { firstName, lastName } = deriveNameParts(customer);
+
+        // Extract totalSpent - only use properties that exist
+        let totalSpent = 0;
+        if ('total_spent' in customer && customer.total_spent) {
+            totalSpent = parseFloat(customer.total_spent) || 0;
+        } else if ('totalSpent' in customer && customer.totalSpent) {
+            totalSpent = parseFloat(customer.totalSpent) || 0;
         }
 
-        const totalSpent = parseFloat(customer.total_spent || customer.totalSpent || '0') || 0;
-
-        // Log if customer has missing critical data
-        if (!email && !firstName && !lastName) {
-            console.warn(`Customer ${index + 1} (ID: ${customer.id}) has missing data:`, {
-                allKeys: Object.keys(customer),
-                email,
-                first_name: customer.first_name,
-                last_name: customer.last_name,
-                firstName: customer.firstName,
-                lastName: customer.lastName,
-            });
+        // Extract shopifyId - only if id exists
+        let shopifyId = null;
+        if ('id' in customer && customer.id) {
+            shopifyId = String(customer.id);
         }
 
-        const mappedCustomer = {
-            shopifyId: String(customer.id),
+        return {
+            shopifyId,
             email,
             firstName,
             lastName,
             totalSpent,
         };
-
-        // Log the mapped result for first customer
-        if (index === 0) {
-            console.log('=== MAPPED CUSTOMER DATA ===');
-            console.log(JSON.stringify(mappedCustomer, null, 2));
-            console.log('=== END MAPPED DATA ===');
-        }
-
-        return mappedCustomer;
     });
 }
 

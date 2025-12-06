@@ -4,6 +4,20 @@ const axios = require('axios');
 
 const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION || '2024-01';
 
+// Split a display/name string into first/last components
+function splitName(displayName) {
+    if (!displayName) return { firstName: null, lastName: null };
+
+    const parts = displayName.trim().split(/\s+/);
+    if (parts.length === 1) {
+        return { firstName: parts[0] || null, lastName: null };
+    }
+
+    const lastName = parts.pop();
+    const firstName = parts.join(' ').trim() || null;
+    return { firstName, lastName: lastName || null };
+}
+
 /**
  * Execute GraphQL query against Shopify Admin API
  * @param {string} shopDomain - Shopify shop domain
@@ -14,8 +28,8 @@ const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION || '2024-01';
  */
 async function graphqlRequest(shopDomain, accessToken, query, variables = {}) {
     const normalizedShop = shopDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const shop = normalizedShop.includes('.myshopify.com') 
-        ? normalizedShop 
+    const shop = normalizedShop.includes('.myshopify.com')
+        ? normalizedShop
         : `${normalizedShop}.myshopify.com`;
 
     const url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
@@ -35,7 +49,7 @@ async function graphqlRequest(shopDomain, accessToken, query, variables = {}) {
             }
         );
 
-        // Check for GraphQL errors
+        // Check for GraphQL errors first
         if (response.data.errors) {
             const errorMessages = response.data.errors.map(e => e.message).join(', ');
             throw new Error(`GraphQL errors: ${errorMessages}`);
@@ -75,21 +89,63 @@ async function fetchCustomersGraphQL(shopDomain, accessToken, limit = 250) {
     let hasNextPage = true;
 
     while (hasNextPage) {
-        const query = `
+        // Use correct GraphQL query structure with nodes and proper field names
+        const query = `#graphql
             query getCustomers($first: Int!, $after: String) {
                 customers(first: $first, after: $after) {
-                    edges {
-                        node {
+                    nodes {
+                        id
+                        firstName
+                        lastName
+                        displayName
+                        defaultEmailAddress {
+                            emailAddress
+                            marketingState
+                        }
+                        defaultPhoneNumber {
+                            phoneNumber
+                            marketingState
+                            marketingCollectedFrom
+                        }
+                        createdAt
+                        updatedAt
+                        numberOfOrders
+                        state
+                        amountSpent {
+                            amount
+                            currencyCode
+                        }
+                        verifiedEmail
+                        taxExempt
+                        tags
+                        addresses {
                             id
-                            email
                             firstName
                             lastName
-                            totalSpentV2 {
-                                amount
-                                currencyCode
-                            }
+                            address1
+                            city
+                            province
+                            country
+                            zip
+                            phone
+                            name
+                            provinceCode
+                            countryCodeV2
                         }
-                        cursor
+                        defaultAddress {
+                            id
+                            firstName
+                            lastName
+                            address1
+                            city
+                            province
+                            country
+                            zip
+                            phone
+                            name
+                            provinceCode
+                            countryCodeV2
+                        }
                     }
                     pageInfo {
                         hasNextPage
@@ -105,17 +161,70 @@ async function fetchCustomersGraphQL(shopDomain, accessToken, limit = 250) {
         };
 
         const data = await graphqlRequest(shopDomain, accessToken, query, variables);
-        
-        if (data.customers?.edges) {
-            for (const edge of data.customers.edges) {
-                const customer = edge.node;
-                customers.push({
-                    shopifyId: customer.id.replace('gid://shopify/Customer/', ''),
-                    email: customer.email || null,
-                    firstName: customer.firstName || null,
-                    lastName: customer.lastName || null,
-                    totalSpent: parseFloat(customer.totalSpentV2?.amount || '0') || 0,
-                });
+
+        if (data && data.customers && data.customers.nodes) {
+            for (const customer of data.customers.nodes) {
+                // Extract firstName and lastName - check multiple sources
+                let firstName = customer.firstName || null;
+                let lastName = customer.lastName || null;
+
+                // If not found at top level, check defaultAddress
+                if (!firstName && customer.defaultAddress?.firstName) {
+                    firstName = customer.defaultAddress.firstName;
+                }
+                if (!lastName && customer.defaultAddress?.lastName) {
+                    lastName = customer.defaultAddress.lastName;
+                }
+
+                // If still not found, check addresses array
+                if ((!firstName || !lastName) && Array.isArray(customer.addresses) && customer.addresses.length > 0) {
+                    // Try to find default address in list, or use first one
+                    const defaultAddr = customer.addresses.find(addr => addr.id === customer.defaultAddress?.id) || customer.addresses[0];
+                    if (defaultAddr) {
+                        if (!firstName && defaultAddr.firstName) {
+                            firstName = defaultAddr.firstName;
+                        }
+                        if (!lastName && defaultAddr.lastName) {
+                            lastName = defaultAddr.lastName;
+                        }
+                    }
+                }
+
+                // Fallback to displayName if still missing
+                if (!firstName || !lastName) {
+                    const displayName = customer.displayName;
+                    if (displayName) {
+                        const parts = displayName.trim().split(/\s+/).filter(p => p.length > 0);
+                        if (parts.length === 1) {
+                            if (!firstName) firstName = parts[0];
+                        } else if (parts.length > 1) {
+                            if (!firstName) firstName = parts.slice(0, -1).join(' ').trim();
+                            if (!lastName) lastName = parts[parts.length - 1];
+                        }
+                    }
+                }
+
+                // Extract email from defaultEmailAddress
+                let email = null;
+                if (customer.defaultEmailAddress?.emailAddress) {
+                    email = customer.defaultEmailAddress.emailAddress;
+                }
+
+                // Extract totalSpent from amountSpent
+                let totalSpent = 0;
+                if (customer.amountSpent?.amount) {
+                    totalSpent = parseFloat(customer.amountSpent.amount) || 0;
+                }
+
+                const mappedCustomer = {
+                    shopifyId: customer.id ? customer.id.replace('gid://shopify/Customer/', '') : null,
+                    email: email || null,
+                    firstName: firstName || null,
+                    lastName: lastName || null,
+                    totalSpent: totalSpent,
+                };
+
+                customers.push(mappedCustomer);
             }
 
             hasNextPage = data.customers.pageInfo.hasNextPage;
@@ -157,6 +266,18 @@ async function fetchOrdersGraphQL(shopDomain, accessToken, limit = 250) {
                                 }
                             }
                             createdAt
+                            lineItems(first: 20) {
+                                nodes {
+                                    id
+                                    title
+                                    quantity
+                                    originalTotalSet {
+                                        shopMoney {
+                                            amount
+                                        }
+                                    }
+                                }
+                            }
                         }
                         cursor
                     }
@@ -174,16 +295,24 @@ async function fetchOrdersGraphQL(shopDomain, accessToken, limit = 250) {
         };
 
         const data = await graphqlRequest(shopDomain, accessToken, query, variables);
-        
+
         if (data.orders?.edges) {
             for (const edge of data.orders.edges) {
                 const order = edge.node;
+                const lineItems = order.lineItems?.nodes?.map(item => ({
+                    shopifyId: item.id.replace('gid://shopify/LineItem/', ''),
+                    title: item.title,
+                    quantity: item.quantity,
+                    price: parseFloat(item.originalTotalSet?.shopMoney?.amount || '0') / (item.quantity || 1),
+                })) || [];
+
                 orders.push({
                     shopifyId: order.id.replace('gid://shopify/Order/', ''),
                     customerId: order.customer?.id?.replace('gid://shopify/Customer/', '') || null,
                     orderNumber: order.name || null,
                     totalPrice: parseFloat(order.totalPriceSet?.shopMoney?.amount || '0') || 0,
                     orderDate: new Date(order.createdAt),
+                    lineItems,
                 });
             }
 
@@ -243,12 +372,12 @@ async function fetchProductsGraphQL(shopDomain, accessToken, limit = 250) {
         };
 
         const data = await graphqlRequest(shopDomain, accessToken, query, variables);
-        
+
         if (data.products?.edges) {
             for (const edge of data.products.edges) {
                 const product = edge.node;
                 const price = product.variants?.edges?.[0]?.node?.price || '0';
-                
+
                 products.push({
                     shopifyId: product.id.replace('gid://shopify/Product/', ''),
                     title: product.title,
@@ -274,6 +403,3 @@ module.exports = {
     fetchOrdersGraphQL,
     fetchProductsGraphQL,
 };
-
-
-

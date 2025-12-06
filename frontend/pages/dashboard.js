@@ -5,7 +5,7 @@ import Head from 'next/head';
 import Header from '../components/Header';
 import MetricCard from '../components/MetricCard';
 import OrdersChart from '../components/OrdersChart';
-import TopCustomers from '../components/TopCustomers';
+import TopProducts from '../components/TopProducts';
 import SyncButton from '../components/SyncButton';
 import OnboardTenant from '../components/OnboardTenant';
 import DataListModal from '../components/DataListModal';
@@ -24,6 +24,7 @@ export default function Dashboard() {
     const [modalType, setModalType] = useState(null);
     const [cachedCustomers, setCachedCustomers] = useState(null);
     const [cachedOrders, setCachedOrders] = useState(null);
+    const [lastUpdated, setLastUpdated] = useState(Date.now());
 
     // Set user email for API requests
     useEffect(() => {
@@ -45,7 +46,7 @@ export default function Dashboard() {
                 try {
                     const data = await getMetrics(tenantId);
                     setMetrics(data);
-                    
+
                     // Pre-fetch customers and orders data for modal
                     try {
                         const [customersData, ordersData] = await Promise.all([
@@ -71,7 +72,7 @@ export default function Dashboard() {
             setCachedCustomers(null);
             setCachedOrders(null);
         }
-    }, [status, tenantId]);
+    }, [status, tenantId, lastUpdated]);
 
     if (status === 'loading' || status === 'unauthenticated') {
         return (
@@ -96,30 +97,15 @@ export default function Dashboard() {
                         <p className="text-slate-500 mt-2">Overview of your store performance</p>
                     </div>
                     {tenantId && (
-                        <SyncButton 
-                            tenantId={tenantId} 
+                        <SyncButton
+                            tenantId={tenantId}
                             onSyncComplete={async () => {
                                 // Refresh metrics and modal data after sync
                                 if (tenantId) {
-                                    setLoading(true);
-                                    try {
-                                        const [metricsData, customersData, ordersData] = await Promise.all([
-                                            getMetrics(tenantId),
-                                            getCustomersList(tenantId),
-                                            getOrdersList(tenantId),
-                                        ]);
-                                        setMetrics(metricsData);
-                                        setCachedCustomers(customersData?.customers || customersData || []);
-                                        setCachedOrders(ordersData?.orders || ordersData || []);
-                                        // Force refresh of child components
-                                        setTenantId(tenantId);
-                                    } catch (error) {
-                                        console.error('Error refreshing data after sync:', error);
-                                    } finally {
-                                        setLoading(false);
-                                    }
+                                    setLastUpdated(Date.now());
+                                    // The useEffect will handle the re-fetch because lastUpdated changed
                                 }
-                            }} 
+                            }}
                         />
                     )}
                 </div>
@@ -129,14 +115,7 @@ export default function Dashboard() {
                     <MetricCard
                         title="Total Customers"
                         value={loading ? "..." : metrics?.totalCustomers?.toLocaleString() || "0"}
-                        clickable={!!tenantId && !loading}
-                        onClick={() => {
-                            if (tenantId) {
-                                console.log('Opening customers modal for tenant:', tenantId);
-                                setModalType('customers');
-                                setModalOpen(true);
-                            }
-                        }}
+                        clickable={false} // Disabled click to view list
                         icon={
                             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -188,8 +167,8 @@ export default function Dashboard() {
                 {/* Charts and Tables */}
                 {tenantId && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <OrdersChart tenantId={tenantId} />
-                        <TopCustomers tenantId={tenantId} />
+                        <OrdersChart tenantId={tenantId} lastUpdated={lastUpdated} />
+                        <TopProducts tenantId={tenantId} lastUpdated={lastUpdated} />
                     </div>
                 )}
                 {!tenantId && (
@@ -203,7 +182,7 @@ export default function Dashboard() {
                                 Connect your Shopify store to start viewing analytics and metrics.
                             </p>
                         </div>
-                        <OnboardTenant 
+                        <OnboardTenant
                             onSuccess={async (tenant) => {
                                 // Refresh tenant list and select new tenant
                                 if (refreshTenants) {
@@ -215,7 +194,7 @@ export default function Dashboard() {
                                 } else {
                                     router.reload();
                                 }
-                            }} 
+                            }}
                         />
                     </div>
                 )}

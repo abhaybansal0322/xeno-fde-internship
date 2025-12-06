@@ -124,10 +124,10 @@ export default function DataListModal({ isOpen, onClose, type, tenantId, custome
                                             {data.map((customer) => (
                                                 <tr key={customer.id} className="hover:bg-slate-50">
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
-                                                        {customer.name}
+                                                        {customer.name || '-'}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                                        {customer.email}
+                                                        {customer.email || '-'}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 text-right font-bold">
                                                         ${(customer.totalSpent || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

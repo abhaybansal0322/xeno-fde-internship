@@ -108,15 +108,15 @@ export const getOrdersTimeSeries = async (tenantId, range) => {
     }
 };
 
-export const getTopCustomers = async (tenantId) => {
+export const getTopProducts = async (tenantId) => {
     try {
-        // Use dedicated endpoint with longer timeout for top customers
-        const response = await api.get(`/api/metrics/top-customers?tenantId=${tenantId}`, {
+        // Use dedicated endpoint with longer timeout for top products
+        const response = await api.get(`/api/metrics/top-products?tenantId=${tenantId}`, {
             timeout: 30000, // 30 seconds timeout for potentially slow queries
         });
-        return response.data.topCustomers || [];
+        return response.data.topProducts || [];
     } catch (error) {
-        console.error('Error fetching top customers:', error);
+        console.error('Error fetching top products:', error);
         // Return empty array on error instead of throwing to prevent UI breakage
         return [];
     }

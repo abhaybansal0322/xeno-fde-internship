@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getOrdersTimeSeries } from '../lib/api';
 
-export default function OrdersChart({ tenantId }) {
+export default function OrdersChart({ tenantId, lastUpdated }) {
     const [data, setData] = useState([]);
     const [range, setRange] = useState('7d');
     const [loading, setLoading] = useState(true);
@@ -21,7 +21,7 @@ export default function OrdersChart({ tenantId }) {
         };
 
         fetchData();
-    }, [tenantId, range]);
+    }, [tenantId, range, lastUpdated]);
 
     return (
         <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-6">

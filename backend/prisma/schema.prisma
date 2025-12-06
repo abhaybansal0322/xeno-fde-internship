@@ -72,11 +72,25 @@ model Order {
   updatedAt   DateTime  @updatedAt
   customer    Customer? @relation(fields: [customerId], references: [id])
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lineItems   OrderLineItem[]
 
   @@unique([tenantId, shopifyId])
   @@index([tenantId])
   @@index([orderDate])
   @@map("orders")
+}
+
+model OrderLineItem {
+  id          String   @id @default(uuid())
+  orderId     String
+  shopifyId   String
+  title       String
+  quantity    Int
+  price       Decimal  @default(0) @db.Decimal(10, 2)
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_line_items")
 }
 
 // User model for authentication

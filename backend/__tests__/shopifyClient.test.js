@@ -34,14 +34,23 @@ describe('ShopifyClient Pagination', () => {
             link: '<https://test.myshopify.com/page1>; rel="previous"', // No next link
         };
 
+        // Detail responses
+        const detailData1 = { customer: { id: 1, first_name: 'C1', last_name: 'L1' } };
+        const detailData2 = { customer: { id: 2, first_name: 'C2', last_name: 'L2' } };
+        const detailData3 = { customer: { id: 3, first_name: 'C3', last_name: 'L3' } };
+
         axios.get
-            .mockResolvedValueOnce({ data: page1Data, headers: page1Headers })
-            .mockResolvedValueOnce({ data: page2Data, headers: page2Headers });
+            .mockResolvedValueOnce({ data: page1Data, headers: page1Headers }) // Page 1
+            .mockResolvedValueOnce({ data: page2Data, headers: page2Headers }) // Page 2
+            .mockResolvedValueOnce({ data: detailData1 }) // Detail 1
+            .mockResolvedValueOnce({ data: detailData2 }) // Detail 2
+            .mockResolvedValueOnce({ data: detailData3 }); // Detail 3
 
         const customers = await fetchCustomers(mockDomain, mockAccessToken);
 
         // Verify axios calls
-        expect(axios.get).toHaveBeenCalledTimes(2);
+        // 2 list calls + 3 detail calls = 5 calls
+        expect(axios.get).toHaveBeenCalledTimes(5);
         expect(axios.get).toHaveBeenNthCalledWith(1, expect.stringContaining('/customers.json'), expect.any(Object));
         expect(axios.get).toHaveBeenNthCalledWith(2, 'https://test.myshopify.com/page2', expect.any(Object));
 
